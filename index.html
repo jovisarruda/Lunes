@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lunes</title>
+<title>Lunes</title><!-- v2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -157,22 +157,13 @@ hr{border:none;border-top:1px solid var(--border)}
         <button id="tab-calendar" onclick="setView('calendar')">Calendar</button>
       </div>
       <div id="topRight">
-        <button class="btn sm ghost" onclick="openAutomations()">⚡ Automate</button>
+        <button class="btn sm ghost" onclick="openFilters()">⚲ Filter<span id="fBadge"></span></button>
         <button class="btn sm ghost" onclick="openColumns()">⚙ Columns</button>
+        <button class="btn sm ghost" onclick="openAutomations()">⚡ Automate</button>
         <button class="icon-btn" id="bell" onclick="openNotifs(event)">🔔<span id="bellCount"></span></button>
       </div>
     </div>
-    <div id="filterbar">
-      <input id="fSearch" placeholder="Search…" style="width:170px" oninput="renderView()">
-      <select id="fPerson" onchange="renderView()"><option value="">Person: all</option></select>
-      <select id="fStatusCol" onchange="fillStatusVals();renderView()"><option value="">Status: any column</option></select>
-      <select id="fStatusVal" onchange="renderView()"><option value="">value: all</option></select>
-      <span class="small">Date</span>
-      <input id="fFrom" type="date" onchange="renderView()">
-      <input id="fTo" type="date" onchange="renderView()">
-      <button class="btn sm ghost" onclick="clearFilters()">Clear</button>
-    </div>
-    <div id="content"></div>
+    <div id="content" style="padding-top:6px"></div>
   </div>
 </div>
 
@@ -237,7 +228,7 @@ async function selectBoard(id){
     sb.from('automations').select('*').eq('board_id',id)
   ]);
   groups=g.data||[];cols=c.data||[];items=i.data||[];automations=a.data||[];
-  fillFilterOptions();
+  filters={search:'',cols:{}};fBadge();
   renderView();
 }
 const itemCols=()=>cols.filter(c=>c.scope==='item');
@@ -274,14 +265,25 @@ function renderBoardNav(){
 }
 
 /* ================= ITEM CRUD + ACTIVITY ================= */
-async function createItem(groupId,parentId,name){
-  const it={board_id:curBoard.id,group_id:groupId,parent_id:parentId,name,col_values:{},position:items.length,created_by:myName};
+async function createItem(groupId,parentId,name,cv){
+  const it={board_id:curBoard.id,group_id:groupId,parent_id:parentId,name,col_values:cv||{},position:items.length,created_by:myName};
   const {data,error}=await sb.from('items').insert(it).select().single();
   if(error)return toast(error.message);
   items.push(data);
   logActivity(data.id,'created','', '');
   runAutomations('item_created',data);
   renderView();
+}
+function calAdd(e,colId,ds){
+  if(e.target!==e.currentTarget&&!e.target.classList.contains('dnum'))return;
+  const opts=groups.map(g=>['+ Item in '+g.name,()=>{const n=prompt('Item name:');if(n)createItem(g.id,null,n,{[colId]:ds})}]);
+  if(topItems().length)opts.push(['+ Subitem of…',()=>{
+    menu(lastMenuEvent,topItems().map(it=>['↳ '+it.name.slice(0,42),()=>{const n=prompt('Subitem name:');if(n)createItem(it.group_id,it.id,n,{[colId]:ds})}]));
+  }]);
+  menu(e,opts);
+}
+function kAdd(e,colId,val){
+  menu(e,groups.map(g=>['+ in '+g.name,()=>{const n=prompt('Item name:');if(n)createItem(g.id,null,n,val?{[colId]:val}:{})}]));
 }
 async function updateItem(it,patch,activityField,oldV,newV){
   Object.assign(it,patch);
@@ -297,7 +299,7 @@ async function setCell(itemId,colId,val){
   it.col_values={...it.col_values,[colId]:val};
   await updateItem(it,{col_values:it.col_values},col.name,old,val);
   if(col.type==='status')runAutomations('status_changes',it,{colId,value:val});
-  fillFilterOptions();renderView();if(panelItem===itemId)renderPanel();
+  renderView();if(panelItem===itemId)renderPanel();
 }
 async function logActivity(itemId,field,oldV,newV){
   await sb.from('activity_logs').insert({item_id:itemId,author:myName,field,old_value:String(oldV??''),new_value:String(newV??'')});
@@ -325,35 +327,56 @@ async function duplicateItem(it,targetGroup,suffix){
 }
 
 /* ================= FILTERS ================= */
-function fillFilterOptions(){
-  const people=new Set();
-  items.forEach(it=>cols.filter(c=>c.type==='person').forEach(c=>{const v=it.col_values[c.id];if(v)String(v).split(',').map(s=>s.trim()).filter(Boolean).forEach(p=>people.add(p))}));
-  const fp=$('fPerson'),cur=fp.value;
-  fp.innerHTML='<option value="">Person: all</option>'+[...people].sort().map(p=>`<option ${p===cur?'selected':''}>${esc(p)}</option>`).join('');
-  const fc=$('fStatusCol'),curc=fc.value;
-  fc.innerHTML='<option value="">Status: any column</option>'+cols.filter(c=>c.type==='status').map(c=>`<option value="${c.id}" ${c.id===curc?'selected':''}>${esc(c.name)} (${c.scope})</option>`).join('');
-  fillStatusVals();
-}
-function fillStatusVals(){
-  const colId=$('fStatusCol').value,fv=$('fStatusVal'),cur=fv.value;
-  const col=cols.find(c=>c.id===colId);
-  fv.innerHTML='<option value="">value: all</option>'+((col?.options?.labels)||[]).map(l=>`<option ${l.name===cur?'selected':''}>${esc(l.name)}</option>`).join('');
-}
-function clearFilters(){$('fSearch').value='';$('fPerson').value='';$('fStatusCol').value='';fillStatusVals();$('fFrom').value='';$('fTo').value='';renderView()}
+let filters={search:'',cols:{}};
+function fBadge(){const n=Object.keys(filters.cols).length+(filters.search?1:0);const b=$('fBadge');if(b)b.textContent=n?' ('+n+')':''}
 function passFilter(it){
-  const q=$('fSearch').value.toLowerCase();
+  const q=(filters.search||'').toLowerCase();
   if(q&&!(it.name.toLowerCase().includes(q)||Object.values(it.col_values||{}).some(v=>String(v).toLowerCase().includes(q))))return false;
-  const p=$('fPerson').value;
-  if(p){const ok=cols.filter(c=>c.type==='person').some(c=>String(it.col_values[c.id]||'').includes(p));if(!ok)return false}
-  const scol=$('fStatusCol').value,sval=$('fStatusVal').value;
-  if(scol&&sval&&String(it.col_values[scol]||'')!==sval)return false;
-  const from=$('fFrom').value,to=$('fTo').value;
-  if(from||to){
-    const dates=cols.filter(c=>c.type==='date').map(c=>it.col_values[c.id]).filter(Boolean);
-    if(!dates.length)return false;
-    if(!dates.some(d=>(!from||d>=from)&&(!to||d<=to)))return false;
+  const isSub=!!it.parent_id;
+  for(const cid in filters.cols){
+    const f=filters.cols[cid];const col=cols.find(c=>c.id===cid);
+    if(!col||f==null||f==='')continue;
+    if((col.scope==='subitem')!==isSub)continue; // filter only applies to its scope
+    const v=it.col_values[cid];
+    if(col.type==='number'){
+      const n=parseFloat(v);
+      if(f.min!=null&&f.min!==''&&!(n>=parseFloat(f.min)))return false;
+      if(f.max!=null&&f.max!==''&&!(n<=parseFloat(f.max)))return false;
+    }else if(col.type==='date'){
+      if(f.from&&!(v&&v>=f.from))return false;
+      if(f.to&&!(v&&v<=f.to))return false;
+    }else if(col.type==='checkbox'){
+      if(f==='checked'&&!v)return false;
+      if(f==='unchecked'&&v)return false;
+    }else if(col.type==='status'||col.type==='person'||col.type==='label'){
+      if(String(v||'')!==f)return false;
+    }else{
+      if(!String(v||'').toLowerCase().includes(String(f).toLowerCase()))return false;
+    }
   }
   return true;
+}
+function setFilter(id,v){if(v)filters.cols[id]=v;else delete filters.cols[id];renderView();fBadge()}
+function setFilterObj(id,k,v){const f=filters.cols[id]||(filters.cols[id]={});f[k]=v;if(!f.from&&!f.to&&!f.min&&!f.max)delete filters.cols[id];renderView();fBadge()}
+function filterCtl(c){
+  const f=filters.cols[c.id];
+  if(c.type==='status'||c.type==='person'||c.type==='label'){
+    const opts=c.type==='status'?(c.options.labels||[]).map(l=>l.name):(c.options.choices||[]);
+    return `<select onchange="setFilter('${c.id}',this.value)"><option value="">all</option>${opts.map(o=>`<option ${f===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+  }
+  if(c.type==='date')return `<input type="date" value="${(f&&f.from)||''}" onchange="setFilterObj('${c.id}','from',this.value)"> <span class="small">to</span> <input type="date" value="${(f&&f.to)||''}" onchange="setFilterObj('${c.id}','to',this.value)">`;
+  if(c.type==='number')return `<span class="small">min</span> <input type="number" style="width:90px" value="${(f&&f.min)??''}" onchange="setFilterObj('${c.id}','min',this.value)"> <span class="small">max</span> <input type="number" style="width:90px" value="${(f&&f.max)??''}" onchange="setFilterObj('${c.id}','max',this.value)">`;
+  if(c.type==='checkbox')return `<select onchange="setFilter('${c.id}',this.value)"><option value="">all</option><option value="checked" ${f==='checked'?'selected':''}>checked</option><option value="unchecked" ${f==='unchecked'?'selected':''}>unchecked</option></select>`;
+  return `<input value="${esc(typeof f==='string'?f:'')}" placeholder="contains…" oninput="setFilter('${c.id}',this.value)">`;
+}
+function openFilters(){
+  overlay(`<h3>⚲ Filters — ${esc(curBoard.name)}</h3>
+    <div class="row"><span class="small" style="width:120px">Search</span><input value="${esc(filters.search)}" style="flex:1" oninput="filters.search=this.value;renderView();fBadge()"></div>
+    <b class="small">ITEM COLUMNS</b>
+    ${itemCols().map(c=>`<div class="row"><span class="small" style="width:120px">${esc(c.name)}</span>${filterCtl(c)}</div>`).join('')||'<p class="small">—</p>'}
+    <b class="small">SUBITEM COLUMNS</b>
+    ${subCols().map(c=>`<div class="row"><span class="small" style="width:120px">${esc(c.name)}</span>${filterCtl(c)}</div>`).join('')||'<p class="small">—</p>'}
+    <button class="btn sm ghost" style="align-self:flex-start" onclick="filters={search:'',cols:{}};renderView();fBadge();this.closest('.overlay').remove();openFilters()">Clear all</button>`);
 }
 // an item passes if itself or any sub passes; a sub shows if it passes
 const itemVisible=it=>passFilter(it)||subsOf(it.id).some(passFilter);
@@ -375,6 +398,9 @@ function cellHtml(it,col){
     return `<span class="status-chip" style="background:${lbl?lbl.color:'#c4c4c4'}" onclick="statusMenu(event,'${it.id}','${col.id}')">${esc(v||'—')}</span>`;
   }
   if(col.type==='checkbox')return `<input type="checkbox" ${v?'checked':''} onchange="setCell('${it.id}','${col.id}',this.checked)">`;
+  if(col.type==='person'||col.type==='label'){
+    return `<span class="cellv" onclick="choiceMenu(event,'${it.id}','${col.id}')">${v?esc(v):'—'}</span>`;
+  }
   if(col.type==='link')return v?`<a href="${esc(v)}" target="_blank" style="color:var(--accent)">🔗 link</a> <span class="cellv" style="min-width:12px" onclick="editCell(event,'${it.id}','${col.id}')">✎</span>`:`<span class="cellv" onclick="editCell(event,'${it.id}','${col.id}')"></span>`;
   let disp=v??'';
   if(col.type==='number'&&v!==''&&v!=null)disp=fmtMoney(v);
@@ -392,20 +418,45 @@ function editCell(e,itemId,colId){
   const inp=document.createElement('input');
   inp.type=col.type==='date'?'date':col.type==='number'?'number':'text';
   inp.value=cur;inp.style.width=col.type==='date'?'135px':'110px';inp.step='any';
-  if(col.type==='person'){
-    inp.setAttribute('list','peopleList');ensurePeopleDatalist();
-  }
   span.replaceWith(inp);inp.focus();
   const done=()=>setCell(itemId,colId,inp.value);
   inp.addEventListener('blur',done);
   inp.addEventListener('keydown',ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){inp.removeEventListener('blur',done);renderView()}});
 }
-function ensurePeopleDatalist(){
-  let dl=$('peopleList');
-  if(!dl){dl=document.createElement('datalist');dl.id='peopleList';document.body.appendChild(dl)}
-  const people=new Set();
-  items.forEach(it=>cols.filter(c=>c.type==='person').forEach(c=>{const v=it.col_values[c.id];if(v)people.add(String(v))}));
-  dl.innerHTML=[...people].map(p=>`<option value="${esc(p)}">`).join('');
+/* dropdown with "create or find" (person & label columns) */
+function choiceMenu(e,itemId,colId){
+  e.stopPropagation();
+  document.querySelectorAll('.menu').forEach(m=>m.remove());
+  const col=cols.find(c=>c.id===colId);
+  const m=document.createElement('div');m.className='menu';m.style.minWidth='210px';
+  const inp=document.createElement('input');inp.placeholder='Create or find…';inp.style.margin='4px';
+  const list=document.createElement('div');list.style.maxHeight='220px';list.style.overflow='auto';list.style.display='flex';list.style.flexDirection='column';
+  m.appendChild(inp);m.appendChild(list);
+  const draw=()=>{
+    const q=inp.value.trim().toLowerCase();
+    list.innerHTML='';
+    (col.options.choices||[]).filter(c=>c.toLowerCase().includes(q)).forEach(name=>{
+      const b=document.createElement('button');b.textContent=name;
+      b.onclick=()=>{close();setCell(itemId,colId,name)};list.appendChild(b);
+    });
+    if(q&&!(col.options.choices||[]).some(c=>c.toLowerCase()===q)){
+      const b=document.createElement('button');b.textContent='+ Add "'+inp.value.trim()+'"';b.style.color='var(--accent)';b.style.fontWeight='600';
+      b.onclick=async()=>{close();const nv=inp.value.trim();col.options={...col.options,choices:[...(col.options.choices||[]),nv]};await sb.from('board_columns').update({options:col.options}).eq('id',colId);setCell(itemId,colId,nv)};
+      list.appendChild(b);
+    }
+    const clr=document.createElement('button');clr.textContent='— clear';clr.className='danger';
+    clr.onclick=()=>{close();setCell(itemId,colId,'')};list.appendChild(clr);
+  };
+  const closer=ev=>{if(!m.contains(ev.target))close()};
+  const close=()=>{m.remove();document.removeEventListener('mousedown',closer)};
+  inp.addEventListener('input',draw);
+  inp.addEventListener('keydown',ev=>{if(ev.key==='Enter'){const first=list.querySelector('button');if(first)first.click()}if(ev.key==='Escape')close()});
+  draw();
+  document.body.appendChild(m);
+  m.style.left=Math.min(e.clientX,innerWidth-230)+'px';
+  m.style.top=Math.min(e.clientY,innerHeight-290)+'px';
+  inp.focus();
+  setTimeout(()=>document.addEventListener('mousedown',closer));
 }
 
 /* ---- TABLE ---- */
@@ -499,6 +550,7 @@ function renderKanban(){
           <div>${esc(it.name)}</div>
           <div class="kb">${person?'👤 '+esc(person):''} ${date?'📅 '+date:''} <span>${esc(groupName(it.group_id))}</span></div>
         </div>`}).join('')}
+      <button class="addrow" style="width:100%;text-align:left;padding:4px 2px" onclick="kAdd(event,'${col.id}',this.closest('.kcol').dataset.val)">+ Add item</button>
     </div>`;
   }
   html+='</div>';
@@ -540,9 +592,9 @@ function renderCalendar(){
     if(dnum<1||dnum>daysIn){html+='<div class="calday dim"></div>';continue}
     const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(dnum).padStart(2,'0')}`;
     const evs=pool.filter(it=>it.col_values[dcol.id]===ds);
-    html+=`<div class="calday ${ds===today?'today':''}" data-d="${ds}" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="cdrop(event,'${dcol.id}')">
+    html+=`<div class="calday ${ds===today?'today':''}" data-d="${ds}" onclick="calAdd(event,'${dcol.id}','${ds}')" style="cursor:pointer" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="cdrop(event,'${dcol.id}')">
       <span class="dnum">${dnum}</span>
-      ${evs.map(it=>{const g=groups.find(x=>x.id===it.group_id);return `<div class="calev" style="background:${g?g.color:'#579bfc'}" draggable="true" ondragstart="event.dataTransfer.setData('t','${it.id}')" onclick="openPanel('${it.id}')" title="${esc(it.name)}">${it.parent_id?'↳ ':''}${esc(it.name)}</div>`}).join('')}
+      ${evs.map(it=>{const g=groups.find(x=>x.id===it.group_id);return `<div class="calev" style="background:${g?g.color:'#579bfc'}" draggable="true" ondragstart="event.dataTransfer.setData('t','${it.id}')" onclick="event.stopPropagation();openPanel('${it.id}')" title="${esc(it.name)}">${it.parent_id?'↳ ':''}${esc(it.name)}</div>`}).join('')}
     </div>`;
   }
   html+='</div></div>';
@@ -588,6 +640,7 @@ function renderPanelShell(){
   d.innerHTML=`<div id="panelHead"><b id="panelName" style="font-size:16px"></b><div style="flex:1"></div><button class="icon-btn" onclick="closePanel()">✕</button></div>
   <div class="ptabs">
     <button id="pt-update" class="active" onclick="panelTab='update';renderPanel()">Comments</button>
+    <button id="pt-files" onclick="panelTab='files';renderPanel()">Files</button>
     <button id="pt-log" onclick="panelTab='log';renderPanel()">Activity log</button>
     <button id="pt-cols" onclick="panelTab='cols';renderPanel()">Values</button>
   </div><div id="panelBody"></div>`;
@@ -597,13 +650,18 @@ async function renderPanel(){
   const it=items.find(x=>x.id===panelItem);
   if(!it)return closePanel();
   $('panelName').textContent=(it.parent_id?'↳ ':'')+it.name;
-  ['update','log','cols'].forEach(t=>$('pt-'+t).classList.toggle('active',panelTab===t));
+  ['update','files','log','cols'].forEach(t=>$('pt-'+t).classList.toggle('active',panelTab===t));
   const body=$('panelBody');
   if(panelTab==='update'){
     const {data}=await sb.from('comments').select('*').eq('item_id',it.id).order('created_at',{ascending:false});
     body.innerHTML=`<div class="row"><textarea id="cmtBox" placeholder="Write a comment…" style="flex:1;min-height:60px"></textarea></div>
       <button class="btn sm" style="align-self:flex-start" onclick="postComment()">Comment</button>
       ${(data||[]).map(c=>`<div class="comment"><div class="meta">${esc(c.author)} · ${new Date(c.created_at).toLocaleString()}</div>${esc(c.body)}</div>`).join('')||'<p class="small">No comments yet.</p>'}`;
+  }else if(panelTab==='files'){
+    const {data}=await sb.from('attachments').select('*').eq('item_id',it.id).order('created_at',{ascending:false});
+    body.innerHTML=`<div class="row"><input type="file" id="attFile" style="flex:1"><button class="btn sm" onclick="uploadAtt()">Upload</button></div>
+      ${(data||[]).map(a=>`<div class="autorule"><span><a href="${esc(a.url)}" target="_blank" style="color:var(--accent);font-weight:500">📎 ${esc(a.name)}</a><br><span class="small">${esc(a.author||'')} · ${new Date(a.created_at).toLocaleString()}</span></span>
+      <button class="icon-btn" style="color:var(--danger)" onclick="delAtt('${a.id}','${esc(a.path)}')">🗑</button></div>`).join('')||'<p class="small">No files yet. Max 15 MB per file.</p>'}`;
   }else if(panelTab==='log'){
     const {data}=await sb.from('activity_logs').select('*').eq('item_id',it.id).order('created_at',{ascending:false}).limit(200);
     body.innerHTML=(data||[]).map(l=>{
@@ -615,6 +673,24 @@ async function renderPanel(){
     body.innerHTML=`<p class="small">Created by ${esc(it.created_by||'?')} · ${new Date(it.created_at).toLocaleString()}</p>`+
       cc.map(c=>`<div class="row"><span style="width:110px" class="small">${esc(c.name)}</span>${cellHtml(it,c)}</div>`).join('');
   }
+}
+async function uploadAtt(){
+  const f=$('attFile').files[0];if(!f)return toast('Choose a file first');
+  if(f.size>15*1024*1024)return toast('Max 15 MB');
+  toast('Uploading…');
+  const path=panelItem+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-]/g,'_');
+  const {error}=await sb.storage.from('files').upload(path,f);
+  if(error)return toast(error.message);
+  const {data:{publicUrl}}=sb.storage.from('files').getPublicUrl(path);
+  await sb.from('attachments').insert({item_id:panelItem,name:f.name,path,url:publicUrl,author:myName});
+  logActivity(panelItem,'attachment','',f.name);
+  toast('File uploaded');renderPanel();
+}
+async function delAtt(id,path){
+  if(!confirm('Delete this file?'))return;
+  await sb.storage.from('files').remove([path]);
+  await sb.from('attachments').delete().eq('id',id);
+  renderPanel();
 }
 async function postComment(){
   const t=$('cmtBox').value.trim();if(!t)return;
@@ -638,17 +714,59 @@ function colTab(s){window._colScope=s;$('ct-item').classList.toggle('active',s==
 function renderColList(){
   const list=cols.filter(c=>c.scope===window._colScope);
   $('colList').innerHTML=list.map(c=>`<div class="autorule"><span><b>${esc(c.name)}</b> <span class="small">${c.type}</span>
-    ${c.type==='status'?`<div class="chips" style="margin-top:6px">${(c.options.labels||[]).map((l,i)=>`<span class="chip" style="background:${l.color}22;color:${l.color}">${esc(l.name)}<button onclick="delLabel('${c.id}',${i})">✕</button></span>`).join('')}<button class="btn sm ghost" onclick="addLabel('${c.id}')">+ label</button></div>`:''}
+    ${c.type==='status'?`<div class="chips" style="margin-top:6px">${(c.options.labels||[]).map((l,i)=>`<span class="chip" style="background:${l.color}22;color:${l.color}">
+      <button title="change color" onclick="labelColor('${c.id}',${i})" style="opacity:1">●</button>
+      <span style="cursor:pointer" title="rename" onclick="renameLabel('${c.id}',${i})">${esc(l.name)}</span>
+      <button title="move left" onclick="moveLabel('${c.id}',${i},-1)">‹</button><button title="move right" onclick="moveLabel('${c.id}',${i},1)">›</button>
+      <button title="delete" onclick="delLabel('${c.id}',${i})">✕</button></span>`).join('')}
+      <button class="btn sm ghost" onclick="addLabel('${c.id}')">+ label</button>
+      <span class="small" style="width:100%">label order = kanban column order</span></div>`:''}
+    ${(c.type==='person'||c.type==='label')?`<div class="chips" style="margin-top:6px">${(c.options.choices||[]).map((ch,i)=>`<span class="chip">${esc(ch)}<button onclick="delChoice('${c.id}',${i})">✕</button></span>`).join('')||'<span class="small">list fills as you type values</span>'}</div>`:''}
     </span>
-    <span><button class="icon-btn" onclick="renameCol('${c.id}')">✎</button><button class="icon-btn" style="color:var(--danger)" onclick="delCol('${c.id}')">🗑</button></span></div>`).join('')||'<p class="small">No columns.</p>';
+    <span style="white-space:nowrap"><button class="icon-btn" title="move up" onclick="moveCol('${c.id}',-1)">↑</button><button class="icon-btn" title="move down" onclick="moveCol('${c.id}',1)">↓</button><button class="icon-btn" title="rename" onclick="renameCol('${c.id}')">✎</button><button class="icon-btn" style="color:var(--danger)" title="delete" onclick="delCol('${c.id}')">🗑</button></span></div>`).join('')||'<p class="small">No columns.</p>';
+}
+async function moveCol(id,dir){
+  const list=cols.filter(c=>c.scope===window._colScope);
+  list.forEach((c,i)=>c.position=i);
+  const i=list.findIndex(c=>c.id===id),j=i+dir;
+  if(j<0||j>=list.length)return;
+  [list[i].position,list[j].position]=[list[j].position,list[i].position];
+  await Promise.all(list.map(c=>sb.from('board_columns').update({position:c.position}).eq('id',c.id)));
+  cols.sort((a,b)=>(a.scope===b.scope)?a.position-b.position:0);
+  renderColList();renderView();
+}
+async function saveColOpts(c){await sb.from('board_columns').update({options:c.options}).eq('id',c.id);renderColList();renderView()}
+async function labelColor(colId,i){
+  const c=cols.find(x=>x.id===colId);const l=c.options.labels[i];
+  l.color=STATUS_COLORS[(STATUS_COLORS.indexOf(l.color)+1)%STATUS_COLORS.length];
+  await saveColOpts(c);
+}
+async function moveLabel(colId,i,dir){
+  const c=cols.find(x=>x.id===colId);const ls=c.options.labels;const j=i+dir;
+  if(j<0||j>=ls.length)return;
+  [ls[i],ls[j]]=[ls[j],ls[i]];
+  await saveColOpts(c);
+}
+async function renameLabel(colId,i){
+  const c=cols.find(x=>x.id===colId);const old=c.options.labels[i].name;
+  const n=prompt('Label text:',old);if(!n||n===old)return;
+  c.options.labels[i].name=n;
+  await sb.from('board_columns').update({options:c.options}).eq('id',colId);
+  const affected=items.filter(it=>it.col_values[colId]===old);
+  for(const it of affected){it.col_values={...it.col_values,[colId]:n};await sb.from('items').update({col_values:it.col_values}).eq('id',it.id)}
+  renderColList();renderView();
+}
+async function delChoice(colId,i){
+  const c=cols.find(x=>x.id===colId);c.options.choices.splice(i,1);
+  await saveColOpts(c);
 }
 async function addColumn(){
   const name=$('ncName').value.trim();if(!name)return;
   const type=$('ncType').value;
-  const options=type==='status'?{labels:[{name:'To Do',color:'#c4c4c4'},{name:'Working on it',color:'#fdab3d'},{name:'Done',color:'#00c875'}]}:{};
-  const {data,error}=await sb.from('board_columns').insert({board_id:curBoard.id,scope:window._colScope,name,type,options,position:cols.length}).select().single();
+  const options=type==='status'?{labels:[{name:'To Do',color:'#c4c4c4'},{name:'Working on it',color:'#fdab3d'},{name:'Done',color:'#00c875'}]}:(type==='person'||type==='label')?{choices:[]}:{};
+  const {data,error}=await sb.from('board_columns').insert({board_id:curBoard.id,scope:window._colScope,name,type,options,position:cols.filter(c=>c.scope===window._colScope).length}).select().single();
   if(error)return toast(error.message);
-  cols.push(data);$('ncName').value='';renderColList();fillFilterOptions();renderView();
+  cols.push(data);$('ncName').value='';renderColList();renderView();
 }
 async function renameCol(id){
   const c=cols.find(x=>x.id===id);const n=prompt('Column name:',c.name);if(!n)return;
@@ -656,7 +774,7 @@ async function renameCol(id){
 }
 async function delCol(id){
   if(!confirm('Delete this column? Values will be lost.'))return;
-  await sb.from('board_columns').delete().eq('id',id);cols=cols.filter(c=>c.id!==id);renderColList();fillFilterOptions();renderView();
+  await sb.from('board_columns').delete().eq('id',id);cols=cols.filter(c=>c.id!==id);renderColList();renderView();
 }
 async function addLabel(colId){
   const c=cols.find(x=>x.id===colId);const n=prompt('Label name:');if(!n)return;
