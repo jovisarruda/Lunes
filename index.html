@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lunes</title><!-- v2.2 -->
+<title>Lunes</title><!-- v2.3 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -67,15 +67,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .gtable td{padding:5px 10px;border-bottom:1px solid var(--border);border-right:1px solid #eceef4;vertical-align:middle;overflow:hidden}
 .gtable tr:last-child td{border-bottom:none}
 .gtable tr.item:hover{background:#fafbff}
-.iname{display:flex;align-items:center;gap:6px;font-weight:500}
+.iname{display:flex;align-items:center;gap:6px;font-weight:500;overflow:hidden}
 .iname .exp{width:18px;color:var(--muted);flex-shrink:0}
-.iname .nm{cursor:pointer}
+.iname .nm{cursor:pointer;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .iname .nm:hover{color:var(--accent);text-decoration:underline}
 .subrow{background:#fbfbfd}
-.subrow td:first-child{padding-left:38px}
 .subhead td{font-size:11.5px;color:var(--muted);background:#f4f5fa;padding:4px 10px}
-.subhead td:first-child{padding-left:38px}
-.cellv{display:inline-block;min-width:40px;min-height:18px;cursor:pointer;border-radius:4px;padding:2px 4px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.subwrap>td{padding:4px 0 8px 38px;background:#fbfbfd}
+.subtable{background:#fbfbfd}
+.subtable th{background:#f4f5fa;font-size:11.5px}
+.nm-edit{opacity:0;padding:1px 4px;font-size:12px;flex-shrink:0;border-radius:4px;color:var(--muted);transition:opacity .12s}
+.nm-edit:hover{background:var(--accent-soft);color:var(--accent)}
+.iname:hover .nm-edit{opacity:1}
+.cellv{display:inline-block;min-width:40px;min-height:18px;cursor:pointer;border-radius:4px;padding:2px 4px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .cellv:hover{outline:1px solid var(--border)}
 .status-chip{display:inline-flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:600;border-radius:4px;padding:3px 10px;min-width:86px;cursor:pointer;text-align:center}
 .sumrow td{font-size:12px;color:var(--muted);background:#fafbfe;font-weight:600}
@@ -309,13 +313,14 @@ async function createItem(groupId,parentId,name,cv){
   runAutomations('item_created',data);
   renderView();
 }
-function calAdd(e,colId,ds){
+function calAdd(e,ds){
   if(e.target!==e.currentTarget&&!e.target.classList.contains('dnum'))return;
-  const opts=groups.map(g=>['+ Item in '+g.name,()=>{const n=prompt('Item name:');if(n)createItem(g.id,null,n,{[colId]:ds})}]);
-  if(topItems().length)opts.push(['+ Subitem of…',()=>{
-    menu(lastMenuEvent,topItems().map(it=>['↳ '+it.name.slice(0,42),()=>{const n=prompt('Subitem name:');if(n)createItem(it.group_id,it.id,n,{[colId]:ds})}]));
+  const iCol=calColFor(false),sCol=calColFor(true);
+  const opts=iCol?groups.map(g=>['+ Item in '+g.name,()=>{const n=prompt('Item name:');if(n)createItem(g.id,null,n,{[iCol.id]:ds})}]):[];
+  if(sCol&&topItems().length)opts.push(['+ Subitem of…',()=>{
+    menu(lastMenuEvent,topItems().map(it=>['↳ '+it.name.slice(0,42),()=>{const n=prompt('Subitem name:');if(n)createItem(it.group_id,it.id,n,{[sCol.id]:ds})}]));
   }]);
-  menu(e,opts);
+  if(opts.length)menu(e,opts);
 }
 function kAdd(e,colId,val){
   menu(e,groups.map(g=>['+ in '+g.name,()=>{const n=prompt('Item name:');if(n)createItem(g.id,null,n,val?{[colId]:val}:{})}]));
@@ -361,13 +366,35 @@ async function logActivity(itemId,field,oldV,newV){
 }
 function itemMenu(e,id){
   const it=items.find(x=>x.id===id);
-  const opts=[
-    ['Open details',()=>openPanel(id)],
-    ['Rename',async()=>{const n=prompt('Name:',it.name);if(!n)return;const o=it.name;await updateItem(it,{name:n},'name',o,n);renderView()}],
-  ];
+  const opts=[];
   if(!it.parent_id)opts.push(['Move to group…',()=>moveItemDialog(it)],['Duplicate',()=>duplicateItem(it,it.group_id)]);
-  opts.push(['!Delete',async()=>{if(!confirm('Delete "'+it.name+'"?'))return;await sb.from('items').delete().eq('id',id);items=items.filter(x=>x.id!==id&&x.parent_id!==id);renderView()}]);
+  opts.push(['!Delete',()=>deleteItem(id)]);
   menu(e,opts);
+}
+async function deleteItem(id){
+  const it=items.find(x=>x.id===id);if(!it)return;
+  if(!confirm('Delete "'+it.name+'"?'))return;
+  await sb.from('items').delete().eq('id',id);
+  items=items.filter(x=>x.id!==id&&x.parent_id!==id);
+  renderView();
+}
+/* click = open details (delayed so dblclick can cancel); dblclick or ✎ = inline rename */
+function nmClick(e,id){
+  e.stopPropagation();
+  clearTimeout(window._nmT);
+  window._nmT=setTimeout(()=>openPanel(id),260);
+}
+function startRename(e,id){
+  e.stopPropagation();clearTimeout(window._nmT);
+  const it=items.find(x=>x.id===id);
+  const span=document.querySelector(`[data-nm="${id}"]`);
+  if(!it||!span)return;
+  const inp=document.createElement('input');
+  inp.value=it.name;inp.style.width=Math.max(150,span.offsetWidth+24)+'px';
+  span.replaceWith(inp);inp.focus();inp.select();
+  const done=async()=>{const n=inp.value.trim();if(n&&n!==it.name){const o=it.name;await updateItem(it,{name:n},'name',o,n)}renderView();if(panelItem===id)renderPanel()};
+  inp.addEventListener('blur',done);
+  inp.addEventListener('keydown',ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){inp.removeEventListener('blur',done);renderView()}});
 }
 function moveItemDialog(it){
   menu(lastMenuEvent,groups.map(g=>[g.name,async()=>{await updateItem(it,{group_id:g.id},'group',groupName(it.group_id),g.name);renderView()}]));
@@ -560,26 +587,38 @@ function renderTable(){
         <button class="icon-btn" onclick="groupMenu(event,'${g.id}')">⋯</button>
       </div>`;
     if(!isCol){
-      html+=`<table class="gtable" style="table-layout:fixed;width:auto"><tr><th style="width:${W.name||300}px;position:relative">Item<span class="rz" onmousedown="rzStart(event,'name')"></span></th>${ic.map(c=>`<th style="width:${W[c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'${c.id}')"></span></th>`).join('')}<th style="width:40px"></th></tr>`;
+      // table-layout:fixed only works with an explicit table width → sum the column widths
+      const tw=(W.name||300)+ic.reduce((t,c)=>t+(W[c.id]||140),0)+40;
+      const sw=(W.s_name||260)+sc.reduce((t,c)=>t+(W['s_'+c.id]||140),0)+40;
+      html+=`<table class="gtable" style="table-layout:fixed;width:${tw}px"><tr><th style="width:${W.name||300}px;position:relative">Item<span class="rz" onmousedown="rzStart(event,'name')"></span></th>${ic.map(c=>`<th style="width:${W[c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'${c.id}')"></span></th>`).join('')}<th style="width:40px"></th></tr>`;
       for(const it of gi){
         const subs=subsOf(it.id);
         const shown=collapsed['x'+it.id]||subFiltersActive();
         html+=`<tr class="item"><td><div class="iname">
           <button class="exp" onclick="collapsed['x${it.id}']=!collapsed['x${it.id}'];renderView()">${subs.length?(shown?'▾':'▸'):'·'}</button>
-          <span class="nm" onclick="openPanel('${it.id}')">${esc(it.name)}</span>
+          <span class="nm" data-nm="${it.id}" onclick="nmClick(event,'${it.id}')" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
+          <button class="nm-edit" title="Rename" onclick="startRename(event,'${it.id}')">✎</button>
           ${subs.length?`<span class="small">${subs.length}</span>`:''}
         </div></td>
         ${ic.map(c=>`<td>${cellHtml(it,c)}</td>`).join('')}
         <td><button class="icon-btn" onclick="itemMenu(event,'${it.id}')">⋯</button></td></tr>`;
         if(shown){
-          html+=`<tr class="subhead"><td>Subitem</td>${sc.map(c=>`<td>${esc(c.name)}</td>`).join('')}<td colspan="${Math.max(0,ic.length-sc.length)+1}"></td></tr>`;
+          // subitems live in their own nested table → independent, resizable column widths
+          html+=`<tr class="subwrap"><td colspan="${ic.length+2}">
+            <table class="gtable subtable" style="table-layout:fixed;width:${sw}px">
+            <tr><th style="width:${W.s_name||260}px;position:relative">Subitem<span class="rz" onmousedown="rzStart(event,'s_name')"></span></th>
+            ${sc.map(c=>`<th style="width:${W['s_'+c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'s_${c.id}')"></span></th>`).join('')}
+            <th style="width:40px"></th></tr>`;
           for(const s of subs.filter(s=>passFilter(s))){
-            html+=`<tr class="subrow"><td><span class="nm cellv" onclick="openPanel('${s.id}')">${esc(s.name)}</span></td>
+            html+=`<tr class="subrow"><td><div class="iname">
+              <span class="nm" data-nm="${s.id}" onclick="nmClick(event,'${s.id}')" ondblclick="startRename(event,'${s.id}')">${esc(s.name)}</span>
+              <button class="nm-edit" title="Rename" onclick="startRename(event,'${s.id}')">✎</button>
+            </div></td>
             ${sc.map(c=>`<td>${cellHtml(s,c)}</td>`).join('')}
-            <td colspan="${Math.max(0,ic.length-sc.length)}"></td>
-            <td><button class="icon-btn" onclick="itemMenu(event,'${s.id}')">⋯</button></td></tr>`;
+            <td><button class="icon-btn" style="color:var(--danger)" title="Delete subitem" onclick="deleteItem('${s.id}')">🗑</button></td></tr>`;
           }
           html+=`<tr class="subrow"><td colspan="${sc.length+2}" class="addrow" onclick="promptAdd('${g.id}','${it.id}')">+ Add subitem</td></tr>`;
+          html+=`</table></td></tr>`;
         }
       }
       html+=`<tr><td colspan="${ic.length+2}" class="addrow" onclick="promptAdd('${g.id}',null)">+ Add item</td></tr>`;
@@ -595,7 +634,8 @@ function colW(){try{return JSON.parse(localStorage.getItem('lunes_w_'+curBoard.i
 function rzStart(e,key){
   e.preventDefault();e.stopPropagation();
   const th=e.target.closest('th');const startX=e.clientX,startW=th.offsetWidth;
-  const mv=ev=>{th.style.width=Math.max(60,startW+ev.clientX-startX)+'px'};
+  const tbl=th.closest('table'),startTW=tbl.offsetWidth;
+  const mv=ev=>{const w=Math.max(60,startW+ev.clientX-startX);th.style.width=w+'px';tbl.style.width=(startTW+w-startW)+'px'};
   const up=ev=>{
     document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
     const w=Math.round(Math.max(60,startW+ev.clientX-startX));
@@ -661,10 +701,16 @@ function kdrop(e,colId){
 /* ---- CALENDAR ---- */
 let calMonth=new Date();
 function calDateCol(){
-  const saved=curBoard.cdate&&cols.find(c=>c.id===curBoard.cdate);
+  const saved=curBoard.cdate&&curBoard.cdate!=='both'&&cols.find(c=>c.id===curBoard.cdate);
   return saved||cols.find(c=>c.type==='date'&&c.scope==='item')||cols.find(c=>c.type==='date');
 }
+// which date column applies to a given row in the current calendar mode
+function calColFor(isSub){
+  if(curBoard.cdate==='both')return cols.find(c=>c.type==='date'&&c.scope===(isSub?'subitem':'item'));
+  return calDateCol();
+}
 function renderCalendar(){
+  const both=curBoard.cdate==='both';
   const dcol=calDateCol();
   if(!dcol){$('content').innerHTML='<p class="small" style="margin-top:30px">Add a date column to use Calendar.</p>';return}
   const y=calMonth.getFullYear(),m=calMonth.getMonth();
@@ -677,7 +723,7 @@ function renderCalendar(){
     <button class="btn sm ghost" onclick="calMonth=new Date(${y},${m+1},1);renderView()">›</button>
     <button class="btn sm ghost" onclick="calMonth=new Date();renderView()">Today</button>
     <span class="small">Date column:</span>
-    <select onchange="curBoard.cdate=this.value;renderView()">${dateCols.map(c=>`<option value="${c.id}" ${c.id===dcol.id?'selected':''}>${esc(c.name)} (${c.scope})</option>`).join('')}</select>
+    <select onchange="curBoard.cdate=this.value;renderView()">${dateCols.map(c=>`<option value="${c.id}" ${!both&&c.id===dcol.id?'selected':''}>${esc(c.name)} (${c.scope})</option>`).join('')}<option value="both" ${both?'selected':''}>Both (item + subitem)</option></select>
   </div><div class="calgrid">`;
   ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d=>html+=`<div class="caldow">${d}</div>`);
   const pool=items.filter(it=>passFilter(it));
@@ -686,8 +732,8 @@ function renderCalendar(){
     const dnum=cell-startDow+1;
     if(dnum<1||dnum>daysIn){html+='<div class="calday dim"></div>';continue}
     const ds=`${y}-${String(m+1).padStart(2,'0')}-${String(dnum).padStart(2,'0')}`;
-    const evs=pool.filter(it=>it.col_values[dcol.id]===ds);
-    html+=`<div class="calday ${ds===today?'today':''}" data-d="${ds}" onclick="calAdd(event,'${dcol.id}','${ds}')" style="cursor:pointer" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="cdrop(event,'${dcol.id}')">
+    const evs=pool.filter(it=>{const c=calColFor(!!it.parent_id);return c&&it.col_values[c.id]===ds});
+    html+=`<div class="calday ${ds===today?'today':''}" data-d="${ds}" onclick="calAdd(event,'${ds}')" style="cursor:pointer" ondragover="event.preventDefault();this.classList.add('dragover')" ondragleave="this.classList.remove('dragover')" ondrop="cdrop(event)">
       <span class="dnum">${dnum}</span>
       ${evs.map(it=>{const g=groups.find(x=>x.id===it.group_id);return `<div class="calev" style="background:${g?g.color:'#579bfc'}" draggable="true" ondragstart="event.dataTransfer.setData('t','${it.id}')" onclick="event.stopPropagation();openPanel('${it.id}')" title="${esc(it.name)}">${it.parent_id?'↳ ':''}${esc(it.name)}</div>`}).join('')}
     </div>`;
@@ -695,11 +741,14 @@ function renderCalendar(){
   html+='</div></div>';
   $('content').innerHTML=html;
 }
-function cdrop(e,colId){
+function cdrop(e){
   e.preventDefault();
   const el=e.currentTarget;el.classList.remove('dragover');
   const id=e.dataTransfer.getData('t');
-  if(id)setCell(id,colId,el.dataset.d);
+  if(!id)return;
+  const it=items.find(x=>x.id===id);
+  const c=calColFor(!!(it&&it.parent_id));
+  if(c)setCell(id,c.id,el.dataset.d);
 }
 
 /* ================= GENERIC MENU ================= */
