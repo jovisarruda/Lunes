@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lunes</title><!-- v2.3 -->
+<title>Lunes</title><!-- v2.4 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -1054,13 +1054,26 @@ async function autoLog(boardId,autoId,itemId,message){
 }
 
 /* ---- engine ---- */
+// human text of what triggered the rule (goes into the notification)
+function trigText(a,colsArr){
+  const t=a.trigger,cn=id=>(colsArr||[]).find(c=>c.id===id)?.name||'?';
+  if(t.type==='status_changes')return '"'+cn(t.colId)+'" changed to "'+t.value+'"';
+  if(t.type==='date_arrives')return '"'+cn(t.colId)+'" date is today';
+  if(t.type==='monthly')return 'monthly trigger (day '+t.day+')';
+  if(t.type==='auto_date_duplication')return 'monthly duplication ran';
+  return 'item was created';
+}
+function notifMsg(a,it,bName,colsArr,parentName){
+  const nm=(parentName?parentName+' / ':'')+(it.parent_id?'↳ ':'')+it.name;
+  return '⚡ '+nm+': '+trigText(a,colsArr)+(a.action.message?' — '+a.action.message:'')+' ('+bName+')';
+}
 async function execAction(a,it){
   const ac=a.action;
   if(ac.type==='move_group'&&!it.parent_id){await updateItem(it,{group_id:ac.groupId},'group',groupName(it.group_id),groupName(ac.groupId))}
   else if(ac.type==='set_column'){const old=it.col_values[ac.colId]??'';it.col_values={...it.col_values,[ac.colId]:ac.value};await updateItem(it,{col_values:it.col_values},cols.find(c=>c.id===ac.colId)?.name||'column',old,ac.value)}
   else if(ac.type==='duplicate'){await duplicateItem(it,ac.groupId,' | '+new Date().toLocaleDateString('en',{month:'short',year:'numeric'}))}
   else if(ac.type==='archive'){await updateItem(it,{archived:true});items=items.filter(x=>x.id!==it.id&&x.parent_id!==it.id)}
-  else if(ac.type==='notify'){await sb.from('notifications').insert({user_email:ac.email,message:(ac.message||'Automation alert')+' — "'+it.name+'" ('+curBoard.name+')',board_id:it.board_id,item_id:it.id})}
+  else if(ac.type==='notify'){const pn=it.parent_id?items.find(x=>x.id===it.parent_id)?.name:null;await sb.from('notifications').insert({user_email:ac.email,message:notifMsg(a,it,curBoard.name,cols,pn),board_id:it.board_id,item_id:it.id})}
   await autoLog(it.board_id,a.id,it.id,'Rule ['+describeAuto(a).replace(/<[^>]+>/g,'')+'] ran on "'+it.name+'"');
 }
 async function runAutomations(evType,it,ctx){
@@ -1140,7 +1153,7 @@ async function execTimeAction(a,it,allBoards,allGroups,allCols,allItems){
   if(ac.type==='move_group'&&!it.parent_id)await sb.from('items').update({group_id:ac.groupId}).eq('id',it.id);
   else if(ac.type==='set_column'){const cv={...it.col_values,[ac.colId]:ac.value};it.col_values=cv;await sb.from('items').update({col_values:cv}).eq('id',it.id)}
   else if(ac.type==='archive')await sb.from('items').update({archived:true}).eq('id',it.id);
-  else if(ac.type==='notify')await sb.from('notifications').insert({user_email:ac.email,message:(ac.message||'Automation alert')+' — "'+it.name+'" ('+bName+')',board_id:it.board_id,item_id:it.id});
+  else if(ac.type==='notify'){const pn=it.parent_id?(allItems||[]).find(x=>x.id===it.parent_id)?.name:null;const bCols=(allCols||[]).filter(c=>c.board_id===it.board_id);await sb.from('notifications').insert({user_email:ac.email,message:notifMsg(a,it,bName,bCols,pn),board_id:it.board_id,item_id:it.id})}
   else if(ac.type==='duplicate'){
     const suffix=' | '+new Date().toLocaleDateString('en',{month:'short',year:'numeric'});
     const {data:ni}=await sb.from('items').insert({board_id:it.board_id,group_id:ac.groupId,name:it.name+suffix,col_values:it.col_values,created_by:'automation'}).select().single();
@@ -1158,9 +1171,18 @@ async function loadNotifs(){
   const bc=$('bellCount');bc.style.display=unread?'block':'none';bc.textContent=unread;
 }
 function openNotifs(e){
-  menu(e,notifs.length?notifs.slice(0,15).map(n=>[(n.read?'· ':'● ')+n.message.slice(0,70),async()=>{
-    await sb.from('notifications').update({read:true}).eq('id',n.id);n.read=true;loadNotifs();
-  }]).concat([['Mark all read',async()=>{await sb.from('notifications').update({read:true}).eq('user_email',user.email);loadNotifs()}]]):[['No notifications',()=>{}]]);
+  menu(e,notifs.length?notifs.slice(0,15).map(n=>[(n.read?'· ':'● ')+n.message.slice(0,90),()=>openNotif(n)])
+    .concat([['Mark all read',async()=>{await sb.from('notifications').update({read:true}).eq('user_email',user.email);loadNotifs()}]]):[['No notifications',()=>{}]]);
+}
+// clicking a notification marks it read and opens the referenced item/subitem
+async function openNotif(n){
+  await sb.from('notifications').update({read:true}).eq('id',n.id);n.read=true;loadNotifs();
+  if(!n.board_id)return;
+  if(!boards.find(b=>b.id===n.board_id))return toast('Board no longer exists');
+  if(!curBoard||curBoard.id!==n.board_id)await selectBoard(n.board_id);
+  if(!n.item_id)return;
+  if(items.find(x=>x.id===n.item_id))openPanel(n.item_id);
+  else toast('Item not found (deleted or archived)');
 }
 </script>
 </body>
