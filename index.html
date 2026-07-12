@@ -7,8 +7,8 @@
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
-  --bg:#f6f7fb;--panel:#fff;--border:#e4e6ef;--text:#20222c;--muted:#8a8fa3;
-  --accent:#4f6ef7;--accent-soft:#eef1fe;--danger:#e2445c;--ok:#00c875;
+  --bg:#f4f6f7;--panel:#fff;--border:#d5d9e2;--text:#1d1f28;--muted:#7d8296;
+  --accent:#4f6ef7;--accent-soft:#eef1fe;--danger:#e2445c;--ok:#00c875;--green:#00a97a;--green-soft:#e6f6f0;
   --r:8px;font-size:14px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
@@ -28,7 +28,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 #login{height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:24px}
 #login .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:36px;width:340px;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 30px rgba(30,40,90,.06)}
 .logo{font-size:26px;font-weight:700;letter-spacing:.5px}
-.logo span{color:var(--accent)}
+.logo span{color:var(--green)}
 #loginErr{color:var(--danger);font-size:12.5px;min-height:16px}
 
 /* layout */
@@ -36,8 +36,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 #sidebar{width:220px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:14px 10px;gap:4px;flex-shrink:0}
 #sidebar .logo{padding:4px 10px 14px}
 .bnav{padding:8px 10px;border-radius:6px;display:flex;align-items:center;gap:8px;color:var(--text);width:100%;text-align:left;font-weight:500;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
-.bnav:hover{background:var(--accent-soft)}
-.bnav.active{background:var(--accent-soft);color:var(--accent);font-weight:600}
+.bnav:hover{background:var(--green-soft)}
+.bnav.active{background:var(--green-soft);color:var(--green);font-weight:600;box-shadow:inset 3px 0 0 var(--green)}
+#sidebar.min{width:58px;padding:14px 5px}
+#sidebar.min .logo{font-size:20px;padding:4px 0 14px;text-align:center}
+.rz{position:absolute;right:-3px;top:0;bottom:0;width:7px;cursor:col-resize;z-index:2}
+.rz:hover{background:var(--green);opacity:.5}
 #main{flex:1;display:flex;flex-direction:column;overflow:hidden}
 #topbar{display:flex;align-items:center;gap:10px;padding:12px 20px;background:var(--panel);border-bottom:1px solid var(--border)}
 #boardTitle{font-size:19px;font-weight:700;margin-right:6px}
@@ -58,8 +62,9 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .group-head{display:flex;align-items:center;gap:8px;margin-bottom:6px}
 .group-head h3{font-size:15.5px;cursor:pointer}
 .gtable{width:100%;border-collapse:collapse;background:var(--panel);border-radius:var(--r);overflow:hidden;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.gtable th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);background:#fafbfe;white-space:nowrap}
-.gtable td{padding:5px 10px;border-bottom:1px solid var(--border);vertical-align:middle}
+.gtable{border:1px solid var(--border)}
+.gtable th{font-size:12px;color:var(--muted);font-weight:600;text-align:left;padding:7px 10px;border-bottom:1px solid var(--border);border-right:1px solid #e8eaf1;background:#f6faf8;white-space:nowrap;overflow:hidden}
+.gtable td{padding:5px 10px;border-bottom:1px solid var(--border);border-right:1px solid #eceef4;vertical-align:middle;overflow:hidden}
 .gtable tr:last-child td{border-bottom:none}
 .gtable tr.item:hover{background:#fafbff}
 .iname{display:flex;align-items:center;gap:6px;font-weight:500}
@@ -141,9 +146,13 @@ hr{border:none;border-top:1px solid var(--border)}
 
 <div id="app">
   <div id="sidebar">
-    <div class="logo">Lu<span>nes</span></div>
+    <div style="display:flex;align-items:center">
+      <div class="logo" id="logoTxt">Lu<span>nes</span></div>
+      <div style="flex:1" id="logoSp"></div>
+      <button class="icon-btn" id="navTgl" onclick="toggleNav()" title="Collapse sidebar">«</button>
+    </div>
     <div id="boardList"></div>
-    <button class="bnav" style="color:var(--muted)" onclick="addBoard()">+ New board</button>
+    <button class="bnav" style="color:var(--muted)" onclick="addBoard()" id="newBoardBtn">+ New board</button>
     <div style="flex:1"></div>
     <button class="bnav" style="color:var(--muted)" onclick="logout()" id="userBtn">Sign out</button>
   </div>
@@ -203,7 +212,7 @@ sb.auth.getSession().then(({data})=>{if(data.session)start(data.session.user)});
 async function start(u){
   user=u;myName=u.email.split('@')[0];
   $('login').style.display='none';$('app').style.display='flex';
-  $('userBtn').textContent='Sign out ('+myName+')';
+  applyNav();
   await loadBoards();
   await loadNotifs();
   runTimeAutomations();
@@ -260,8 +269,29 @@ function boardMenu(e){
     ['!Delete board',async()=>{if(!confirm('Delete board "'+curBoard.name+'" and ALL its data?'))return;await sb.from('boards').delete().eq('id',curBoard.id);boards=boards.filter(b=>b.id!==curBoard.id);curBoard=null;loadBoards()}]
   ]);
 }
+let navMin=localStorage.getItem('lunes_nav')==='min';
+function boardInitials(n){const w=n.replace(/[^A-Za-z0-9À-ú\s]/g,' ').trim().split(/\s+/).filter(Boolean);return ((w[0]?.[0]||'')+(w[1]?.[0]||w[0]?.[1]||'')).toUpperCase()}
+function boardColor(n){let h=0;for(const ch of n)h=(h*31+ch.charCodeAt(0))>>>0;return GROUP_COLORS[h%GROUP_COLORS.length]}
+function toggleNav(){navMin=!navMin;localStorage.setItem('lunes_nav',navMin?'min':'full');applyNav()}
+function applyNav(){
+  document.getElementById('sidebar').classList.toggle('min',navMin);
+  $('logoTxt').innerHTML=navMin?'L<span>.</span>':'Lu<span>nes</span>';
+  $('navTgl').textContent=navMin?'»':'«';
+  $('newBoardBtn').textContent=navMin?'+':'+ New board';
+  $('newBoardBtn').style.textAlign=navMin?'center':'left';
+  $('userBtn').textContent=navMin?'⏻':'Sign out ('+myName+')';
+  $('userBtn').style.textAlign=navMin?'center':'left';
+  renderBoardNav();
+}
 function renderBoardNav(){
-  $('boardList').innerHTML=boards.map(b=>`<button class="bnav ${curBoard&&b.id===curBoard.id?'active':''}" onclick="selectBoard('${b.id}')">▦ ${esc(b.name)}</button>`).join('');
+  $('boardList').innerHTML=boards.map(b=>{
+    const act=curBoard&&b.id===curBoard.id?'active':'';
+    if(navMin){
+      const c=boardColor(b.name);
+      return `<button class="bnav ${act}" title="${esc(b.name)}" style="justify-content:center;padding:7px 2px" onclick="selectBoard('${b.id}')"><span style="background:${c}22;color:${c};border-radius:6px;min-width:32px;height:26px;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:12px">${esc(boardInitials(b.name))}</span></button>`;
+    }
+    return `<button class="bnav ${act}" onclick="selectBoard('${b.id}')">▦ ${esc(b.name)}</button>`;
+  }).join('');
 }
 
 /* ================= ITEM CRUD + ACTIVITY ================= */
@@ -295,7 +325,27 @@ async function updateItem(it,patch,activityField,oldV,newV){
 async function setCell(itemId,colId,val){
   const it=items.find(x=>x.id===itemId);const col=cols.find(c=>c.id===colId);
   const old=it.col_values[colId]??'';
-  if(String(old)===String(val))return;
+  if(String(old)===String(val))return renderView();
+  const p=typeof numPair==='function'?numPair():null;
+  if(p&&!it.parent_id&&col.id===p.i.id){
+    if(window._forceTotal===it.id){
+      window._forceTotal=null;
+      for(const s of subsOf(it.id)){
+        if(s.col_values[p.s.id]!=null&&s.col_values[p.s.id]!==''){
+          s.col_values={...s.col_values,[p.s.id]:''};
+          await sb.from('items').update({col_values:s.col_values}).eq('id',s.id);
+        }
+      }
+    }else if(subSum(it)!=null){return renderView()} // computed cell: ignore direct edits
+  }
+  if(p&&it.parent_id&&col.id===p.s.id&&val!==''){
+    const par=items.find(x=>x.id===it.parent_id);
+    if(par&&par.col_values[p.i.id]!==''&&par.col_values[p.i.id]!=null&&subSum(par)==null){
+      if(!confirm('The parent item has a manual total.\nFilling this subitem value will DELETE the item total (it becomes the sum of subitems). Continue?'))return renderView();
+      par.col_values={...par.col_values,[p.i.id]:''};
+      await sb.from('items').update({col_values:par.col_values}).eq('id',par.id);
+    }
+  }
   it.col_values={...it.col_values,[colId]:val};
   await updateItem(it,{col_values:it.col_values},col.name,old,val);
   if(col.type==='status')runAutomations('status_changes',it,{colId,value:val});
@@ -378,8 +428,28 @@ function openFilters(){
     ${subCols().map(c=>`<div class="row"><span class="small" style="width:120px">${esc(c.name)}</span>${filterCtl(c)}</div>`).join('')||'<p class="small">—</p>'}
     <button class="btn sm ghost" style="align-self:flex-start" onclick="filters={search:'',cols:{}};renderView();fBadge();this.closest('.overlay').remove();openFilters()">Clear all</button>`);
 }
-// an item passes if itself or any sub passes; a sub shows if it passes
-const itemVisible=it=>passFilter(it)||subsOf(it.id).some(passFilter);
+// subitem-scoped filters also hide items that have no matching subitem
+const subFiltersActive=()=>Object.keys(filters.cols).some(id=>{const c=cols.find(x=>x.id===id);return c&&c.scope==='subitem'&&filters.cols[id]!==''&&filters.cols[id]!=null});
+const itemVisible=it=>passFilter(it)&&(!subFiltersActive()||subsOf(it.id).some(passFilter));
+
+/* ===== item total = sum of subitem values (primary number pair) ===== */
+function numPair(){const i=itemCols().find(c=>c.type==='number');const s=subCols().find(c=>c.type==='number');return (i&&s)?{i,s}:null}
+function subSum(it){
+  const p=numPair();if(!p)return null;
+  const withVal=subsOf(it.id).filter(s=>s.col_values[p.s.id]!==''&&s.col_values[p.s.id]!=null);
+  if(!withVal.length)return null;
+  return withVal.reduce((t,s)=>t+(parseFloat(s.col_values[p.s.id])||0),0);
+}
+function effNum(it,col){
+  const p=numPair();
+  if(p&&col.id===p.i.id&&!it.parent_id){const ss=subSum(it);if(ss!=null)return ss}
+  return parseFloat(it.col_values[col.id])||0;
+}
+function forceItemTotal(e,itemId,colId){
+  if(!confirm('This total is calculated from the subitem values.\nTyping a manual value will DELETE the subitem values. Continue?'))return;
+  window._forceTotal=itemId;
+  editCell(e,itemId,colId);
+}
 
 /* ================= VIEWS ================= */
 function setView(v){view=v;['table','kanban','calendar'].forEach(x=>$('tab-'+x).classList.toggle('active',x===v));renderView()}
@@ -402,6 +472,13 @@ function cellHtml(it,col){
     return `<span class="cellv" onclick="choiceMenu(event,'${it.id}','${col.id}')">${v?esc(v):'—'}</span>`;
   }
   if(col.type==='link')return v?`<a href="${esc(v)}" target="_blank" style="color:var(--accent)">🔗 link</a> <span class="cellv" style="min-width:12px" onclick="editCell(event,'${it.id}','${col.id}')">✎</span>`:`<span class="cellv" onclick="editCell(event,'${it.id}','${col.id}')"></span>`;
+  if(!it.parent_id&&col.type==='number'){
+    const p=numPair();
+    if(p&&col.id===p.i.id){
+      const ss=subSum(it);
+      if(ss!=null)return `<span class="cellv" style="font-style:italic" title="Sum of subitem values — click to type a manual total" onclick="forceItemTotal(event,'${it.id}','${col.id}')">Σ ${esc(fmtMoney(ss))}</span>`;
+    }
+  }
   let disp=v??'';
   if(col.type==='number'&&v!==''&&v!=null)disp=fmtMoney(v);
   return `<span class="cellv" onclick="editCell(event,'${it.id}','${col.id}')">${esc(disp)}</span>`;
@@ -466,22 +543,22 @@ function renderTable(){
   for(const g of groups){
     const gi=topItems().filter(x=>x.group_id===g.id&&itemVisible(x));
     const isCol=collapsed[g.id];
-    // sums
+    // sums (uses effective value: subitem sum or manual)
     const sums=ic.filter(c=>c.type==='number').map(c=>{
-      const t=gi.reduce((s,it)=>s+(parseFloat(it.col_values[c.id])||0),0);
+      const t=gi.reduce((s,it)=>s+effNum(it,c),0);
       return {c,t};
     });
+    const W=colW();
     html+=`<div class="group">
       <div class="group-head">
         <h3 style="color:${g.color}" onclick="collapsed['${g.id}']=!collapsed['${g.id}'];renderView()">${isCol?'▸':'▾'} ${esc(g.name)}</h3>
-        <span class="gsum">${gi.length} items${sums.map(s=>' · '+esc(s.c.name)+': '+fmtMoney(s.t)).join('')}</span>
         <button class="icon-btn" onclick="groupMenu(event,'${g.id}')">⋯</button>
       </div>`;
     if(!isCol){
-      html+=`<table class="gtable"><tr><th style="min-width:260px">Item</th>${ic.map(c=>`<th>${esc(c.name)}</th>`).join('')}<th style="width:36px"></th></tr>`;
+      html+=`<table class="gtable" style="table-layout:fixed;width:auto"><tr><th style="width:${W.name||300}px;position:relative">Item<span class="rz" onmousedown="rzStart(event,'name')"></span></th>${ic.map(c=>`<th style="width:${W[c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'${c.id}')"></span></th>`).join('')}<th style="width:40px"></th></tr>`;
       for(const it of gi){
         const subs=subsOf(it.id);
-        const shown=collapsed['x'+it.id];
+        const shown=collapsed['x'+it.id]||subFiltersActive();
         html+=`<tr class="item"><td><div class="iname">
           <button class="exp" onclick="collapsed['x${it.id}']=!collapsed['x${it.id}'];renderView()">${subs.length?(shown?'▾':'▸'):'·'}</button>
           <span class="nm" onclick="openPanel('${it.id}')">${esc(it.name)}</span>
@@ -491,7 +568,7 @@ function renderTable(){
         <td><button class="icon-btn" onclick="itemMenu(event,'${it.id}')">⋯</button></td></tr>`;
         if(shown){
           html+=`<tr class="subhead"><td>Subitem</td>${sc.map(c=>`<td>${esc(c.name)}</td>`).join('')}<td colspan="${Math.max(0,ic.length-sc.length)+1}"></td></tr>`;
-          for(const s of subs.filter(s=>passFilter(s)||passFilter(it))){
+          for(const s of subs.filter(s=>passFilter(s))){
             html+=`<tr class="subrow"><td><span class="nm cellv" onclick="openPanel('${s.id}')">${esc(s.name)}</span></td>
             ${sc.map(c=>`<td>${cellHtml(s,c)}</td>`).join('')}
             <td colspan="${Math.max(0,ic.length-sc.length)}"></td>
@@ -508,6 +585,19 @@ function renderTable(){
   }
   if(!groups.length)html='<p style="margin-top:30px" class="small">No groups yet — use ⋯ next to the board title to add one.</p>';
   $('content').innerHTML=html;
+}
+function colW(){try{return JSON.parse(localStorage.getItem('lunes_w_'+curBoard.id)||'{}')}catch(e){return{}}}
+function rzStart(e,key){
+  e.preventDefault();e.stopPropagation();
+  const th=e.target.closest('th');const startX=e.clientX,startW=th.offsetWidth;
+  const mv=ev=>{th.style.width=Math.max(60,startW+ev.clientX-startX)+'px'};
+  const up=ev=>{
+    document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);
+    const w=Math.round(Math.max(60,startW+ev.clientX-startX));
+    const k='lunes_w_'+curBoard.id;const W=colW();W[key]=w;localStorage.setItem(k,JSON.stringify(W));
+    renderView();
+  };
+  document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
 }
 function promptAdd(groupId,parentId){
   const n=prompt(parentId?'Subitem name:':'Item name:');if(!n)return;
@@ -721,7 +811,7 @@ function renderColList(){
       <button title="delete" onclick="delLabel('${c.id}',${i})">✕</button></span>`).join('')}
       <button class="btn sm ghost" onclick="addLabel('${c.id}')">+ label</button>
       <span class="small" style="width:100%">label order = kanban column order</span></div>`:''}
-    ${(c.type==='person'||c.type==='label')?`<div class="chips" style="margin-top:6px">${(c.options.choices||[]).map((ch,i)=>`<span class="chip">${esc(ch)}<button onclick="delChoice('${c.id}',${i})">✕</button></span>`).join('')||'<span class="small">list fills as you type values</span>'}</div>`:''}
+    ${(c.type==='person'||c.type==='label')?`<div class="chips" style="margin-top:6px">${(c.options.choices||[]).map((ch,i)=>`<span class="chip">${esc(ch)}<button onclick="delChoice('${c.id}',${i})">✕</button></span>`).join('')}<button class="btn sm ghost" onclick="addChoice('${c.id}')">+ add</button></div>`:''}
     </span>
     <span style="white-space:nowrap"><button class="icon-btn" title="move up" onclick="moveCol('${c.id}',-1)">↑</button><button class="icon-btn" title="move down" onclick="moveCol('${c.id}',1)">↓</button><button class="icon-btn" title="rename" onclick="renameCol('${c.id}')">✎</button><button class="icon-btn" style="color:var(--danger)" title="delete" onclick="delCol('${c.id}')">🗑</button></span></div>`).join('')||'<p class="small">No columns.</p>';
 }
@@ -758,6 +848,11 @@ async function renameLabel(colId,i){
 }
 async function delChoice(colId,i){
   const c=cols.find(x=>x.id===colId);c.options.choices.splice(i,1);
+  await saveColOpts(c);
+}
+async function addChoice(colId){
+  const c=cols.find(x=>x.id===colId);const n=prompt('New option:');if(!n)return;
+  c.options={...c.options,choices:[...(c.options.choices||[]),n.trim()]};
   await saveColOpts(c);
 }
 async function addColumn(){
