@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lunes</title><!-- v2 -->
+<title>Lunes</title><!-- v2.2 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -194,6 +194,11 @@ const $=id=>document.getElementById(id);
 const esc=s=>(s??'').toString().replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>crypto.randomUUID();
 const todayStr=()=>new Date().toISOString().slice(0,10);
+// add exactly 1 calendar month to 'YYYY-MM-DD', clamping the day to the target month's length
+function addMonth(ds){const p=ds.split('-').map(Number);let ny=p[0],nm=p[1]+1;if(nm>12){nm=1;ny++}const last=new Date(ny,nm,0).getDate();return ny+'-'+String(nm).padStart(2,'0')+'-'+String(Math.min(p[2],last)).padStart(2,'0')}
+// stamp a "<prefix> MM/YYYY" name: replace an existing MM/YYYY pattern, else append
+function stampMonthName(name,stamp){const re=/\b\d{1,2}\/\d{4}\b/;return re.test(name)?name.replace(re,stamp):(name+' '+stamp)}
+const monthStamp=()=>{const n=new Date();return String(n.getMonth()+1).padStart(2,'0')+'/'+n.getFullYear()};
 function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2600)}
 const fmtMoney=n=>'R$ '+Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:2});
 
@@ -902,8 +907,9 @@ function openAutomations(){
         <option value="date_arrives">a date arrives</option>
         <option value="monthly">every month (day N)</option>
         <option value="item_created">item is created</option>
+        <option value="auto_date_duplication">⭐ monthly duplication → next month (special)</option>
       </select><span id="aTrigX"></span></div>
-    <div class="row"><span class="small">Then</span>
+    <div class="row" id="aActRow"><span class="small">Then</span>
       <select id="aAct" onchange="autoActUI()">
         <option value="move_group">move item to group…</option>
         <option value="set_column">set a column to…</option>
@@ -921,7 +927,15 @@ function autoTrigUI(){
   if(t==='status_changes')x.innerHTML=`<select id="aTc">${window._sCols.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.scope})</option>`).join('')}</select> to <select id="aTv"></select>`,fillTv();
   else if(t==='date_arrives')x.innerHTML=`<select id="aTc">${window._dCols.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.scope})</option>`).join('')}</select>`;
   else if(t==='monthly')x.innerHTML=`day <input id="aTd" type="number" min="1" max="28" value="1" style="width:60px"> — applies to items in group <select id="aTg">${groups.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select>`;
+  else if(t==='auto_date_duplication'){
+    const itemDate=cols.filter(c=>c.type==='date'&&c.scope==='item');
+    const gsel=id=>`<select id="${id}">${groups.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select>`;
+    x.innerHTML=itemDate.length
+      ? `<select id="aDd">${itemDate.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select> arrives, duplicate all items of ${gsel('aDsrc')} → stamp name with current MM/YYYY, move copies to ${gsel('aDdst')}, then push originals' dates +1 month`
+      : `<span class="small" style="color:var(--danger)">Add an item date column first (e.g. "Ref").</span>`;
+  }
   else x.innerHTML='';
+  const actRow=$('aActRow');if(actRow)actRow.style.display=(t==='auto_date_duplication')?'none':'';
   const tc=$('aTc');if(tc&&t==='status_changes')tc.onchange=fillTv;
 }
 function fillTv(){
@@ -941,6 +955,13 @@ async function saveAutomation(){
   if(t==='status_changes'){trigger.colId=$('aTc').value;trigger.value=$('aTv').value}
   if(t==='date_arrives')trigger.colId=$('aTc').value;
   if(t==='monthly'){trigger.day=parseInt($('aTd').value)||1;trigger.groupId=$('aTg').value}
+  if(t==='auto_date_duplication'){
+    const dd=$('aDd');if(!dd)return toast('Add an item date column first (e.g. "Ref")');
+    trigger.dateCol=dd.value;trigger.srcGroup=$('aDsrc').value;trigger.dstGroup=$('aDdst').value;
+    const {data,error}=await sb.from('automations').insert({board_id:curBoard.id,trigger,action:{type:'auto_date_duplication'},enabled:true}).select().single();
+    if(error)return toast(error.message);
+    automations.push(data);renderAutoList();toast('Special rule added');return;
+  }
   const action={type:a};
   if(a==='move_group'||a==='duplicate')action.groupId=$('aAg').value;
   if(a==='set_column'){action.colId=$('aAc').value;action.value=$('aAv').value}
@@ -953,6 +974,7 @@ function describeAuto(a){
   const t=a.trigger,ac=a.action;
   const cn=id=>cols.find(c=>c.id===id)?.name||'?';
   const gn=id=>groups.find(g=>g.id===id)?.name||'?';
+  if(t.type==='auto_date_duplication')return `⭐ Monthly: when <b>${esc(cn(t.dateCol))}</b> arrives → duplicate all items of <b>${esc(gn(t.srcGroup))}</b>, stamp name with current MM/YYYY, move copies to <b>${esc(gn(t.dstGroup))}</b>, then push originals' item+subitem dates +1 month`;
   let s='When ';
   if(t.type==='status_changes')s+=`<b>${esc(cn(t.colId))}</b> → "${esc(t.value)}"`;
   else if(t.type==='date_arrives')s+=`<b>${esc(cn(t.colId))}</b> arrives`;
@@ -1003,7 +1025,7 @@ async function runAutomations(evType,it,ctx){
 async function runTimeAutomations(){
   // runs across ALL boards on app load
   const {data:autos}=await sb.from('automations').select('*').eq('enabled',true);
-  const timeAutos=(autos||[]).filter(a=>['date_arrives','monthly'].includes(a.trigger.type));
+  const timeAutos=(autos||[]).filter(a=>['date_arrives','monthly','auto_date_duplication'].includes(a.trigger.type));
   if(!timeAutos.length)return;
   const {data:allItems}=await sb.from('items').select('*').eq('archived',false);
   const {data:allBoards}=await sb.from('boards').select('*');
@@ -1020,7 +1042,7 @@ async function runTimeAutomations(){
       for(const it of src)await execTimeAction(a,it,allBoards,allGroups,allCols,allItems);
       t.last_run=ym;
       await sb.from('automations').update({trigger:t}).eq('id',a.id);
-    }else{ // date_arrives
+    }else if(t.type==='date_arrives'){
       for(const it of bItems){
         const dv=it.col_values?.[t.colId];
         if(!dv||dv>today)continue;
@@ -1030,6 +1052,33 @@ async function runTimeAutomations(){
         it.col_values={...it.col_values,['_auto_'+a.id]:today};
         await sb.from('items').update({col_values:it.col_values}).eq('id',it.id);
       }
+    }else if(t.type==='auto_date_duplication'){
+      // fire at most once per calendar month, when any source-group item's Ref date has arrived
+      if((t.last_run||'')>=ym)continue;
+      const srcTop=bItems.filter(x=>x.group_id===t.srcGroup&&!x.parent_id);
+      const arrived=srcTop.some(it=>{const dv=it.col_values?.[t.dateCol];return dv&&dv<=today});
+      if(!arrived)continue;
+      const stamp=monthStamp();
+      const bCols=(allCols||[]).filter(c=>c.board_id===a.board_id);
+      // 1) duplicate every source item (+its subitems) into the destination group, stamping the copy's name
+      for(const it of srcTop){
+        const nm=stampMonthName(it.name,stamp);
+        const {data:ni}=await sb.from('items').insert({board_id:it.board_id,group_id:t.dstGroup,name:nm,col_values:it.col_values,created_by:'automation'}).select().single();
+        if(!ni)continue;
+        const subs=(allItems||[]).filter(sx=>sx.parent_id===it.id).map(sx=>({board_id:sx.board_id,group_id:t.dstGroup,parent_id:ni.id,name:sx.name,col_values:sx.col_values,created_by:'automation'}));
+        if(subs.length)await sb.from('items').insert(subs);
+      }
+      // 2) push originals' date columns (items + subitems of the source group) forward exactly 1 month
+      const srcAll=bItems.filter(x=>x.group_id===t.srcGroup);
+      for(const it of srcAll){
+        const dcols=bCols.filter(c=>c.type==='date'&&c.scope===(it.parent_id?'subitem':'item'));
+        let cv={...it.col_values},ch=false;
+        for(const c of dcols){const v=cv[c.id];if(v){cv[c.id]=addMonth(v);ch=true}}
+        if(ch)await sb.from('items').update({col_values:cv}).eq('id',it.id);
+      }
+      t.last_run=ym;
+      await sb.from('automations').update({trigger:t}).eq('id',a.id);
+      await autoLog(a.board_id,a.id,null,'Monthly duplication ('+stamp+'): '+srcTop.length+' item(s) copied to destination group; originals pushed +1 month');
     }
   }
   if(curBoard)selectBoard(curBoard.id);
