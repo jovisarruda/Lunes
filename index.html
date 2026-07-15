@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lunes</title><!-- v2.5 -->
+<title>Lunes</title><!-- v2.6 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -134,6 +134,14 @@ hr{border:none;border-top:1px solid var(--border)}
 .menu button:hover{background:var(--accent-soft)}
 .menu button.danger{color:var(--danger)}
 #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#22242e;color:#fff;padding:9px 18px;border-radius:8px;font-size:13px;z-index:99;display:none}
+/* Fase 1: drag reorder + batch select */
+.drag{cursor:grab;color:var(--muted);opacity:.4;font-size:12px;padding:0 1px;user-select:none;flex-shrink:0}
+.drag:hover{opacity:.95}
+.drag:active{cursor:grabbing}
+.selbox{cursor:pointer;flex-shrink:0;margin:0 1px}
+tr.dragrow>td{box-shadow:inset 0 2px 0 0 var(--accent)}
+#batchbar{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#22242e;color:#fff;padding:8px 12px;border-radius:10px;display:flex;gap:8px;align-items:center;z-index:80;box-shadow:0 8px 30px rgba(0,0,0,.28);font-size:13px}
+#batchbar .btn{padding:5px 11px}
 </style>
 </head>
 <body>
@@ -516,6 +524,7 @@ function renderView(){
   if(view==='table')renderTable();
   else if(view==='kanban')renderKanban();
   else renderCalendar();
+  renderBatchBar();
 }
 
 /* ---- cell rendering & editing ---- */
@@ -620,7 +629,9 @@ function renderTable(){
       for(const it of gi){
         const subs=subsOf(it.id);
         const shown=collapsed['x'+it.id]||subFiltersActive();
-        html+=`<tr class="item"><td><div class="iname">
+        html+=`<tr class="item" ondragover="rowOver(event)" ondragleave="rowLeave(event)" ondrop="rowDrop(event,'${it.id}','item')"><td><div class="iname">
+          <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
+          <span class="drag" draggable="true" ondragstart="rowDragStart(event,'${it.id}','item')" ondragend="rowDragEnd(event)" title="Drag to reorder">⠿</span>
           <button class="exp" onclick="collapsed['x${it.id}']=!collapsed['x${it.id}'];renderView()">${subs.length?(shown?'▾':'▸'):'·'}</button>
           <span class="nm" data-nm="${it.id}" onclick="nmClick(event,'${it.id}')" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
           <button class="nm-edit" title="Rename" onclick="startRename(event,'${it.id}')">✎</button>
@@ -636,7 +647,9 @@ function renderTable(){
             ${sc.map(c=>`<th style="width:${W['s_'+c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'s_${c.id}')"></span></th>`).join('')}
             <th style="width:40px"></th></tr>`;
           for(const s of subs.filter(s=>passFilter(s))){
-            html+=`<tr class="subrow"><td><div class="iname">
+            html+=`<tr class="subrow" ondragover="rowOver(event)" ondragleave="rowLeave(event)" ondrop="rowDrop(event,'${s.id}','sub')"><td><div class="iname">
+              <input type="checkbox" class="selbox" ${selected.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${s.id}',this.checked)">
+              <span class="drag" draggable="true" ondragstart="rowDragStart(event,'${s.id}','sub')" ondragend="rowDragEnd(event)" title="Drag to reorder">⠿</span>
               <span class="nm" data-nm="${s.id}" onclick="nmClick(event,'${s.id}')" ondblclick="startRename(event,'${s.id}')">${esc(s.name)}</span>
               <button class="nm-edit" title="Rename" onclick="startRename(event,'${s.id}')">✎</button>
             </div></td>
@@ -669,6 +682,82 @@ function rzStart(e,key){
     renderView();
   };
   document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+}
+/* ===== Fase 1: drag reorder + batch select ===== */
+let dragCtx=null, selected=new Set();
+function rowDragStart(e,id,scope){dragCtx={id,scope};e.dataTransfer.effectAllowed='move';try{e.dataTransfer.setData('text/plain',id)}catch(_){}}
+function rowDragEnd(e){dragCtx=null;document.querySelectorAll('.dragrow').forEach(r=>r.classList.remove('dragrow'))}
+function rowOver(e){if(!dragCtx)return;e.preventDefault();const tr=e.currentTarget;document.querySelectorAll('.dragrow').forEach(r=>{if(r!==tr)r.classList.remove('dragrow')});tr.classList.add('dragrow')}
+function rowLeave(e){e.currentTarget.classList.remove('dragrow')}
+async function rowDrop(e,targetId,scope){
+  e.preventDefault();e.stopPropagation();
+  e.currentTarget.classList.remove('dragrow');
+  const ctx=dragCtx;dragCtx=null;
+  if(!ctx||ctx.scope!==scope||ctx.id===targetId)return;
+  const dragged=items.find(x=>x.id===ctx.id),target=items.find(x=>x.id===targetId);
+  if(!dragged||!target)return;
+  if(scope==='item'&&dragged.group_id!==target.group_id)return;   // reorder only within same group
+  if(scope==='sub'&&dragged.parent_id!==target.parent_id)return;  // reorder only within same parent
+  let list=(scope==='item'?topItems().filter(x=>x.group_id===dragged.group_id):subsOf(dragged.parent_id)).slice().sort((a,b)=>(a.position||0)-(b.position||0));
+  list=list.filter(x=>x.id!==dragged.id);
+  const ti=list.findIndex(x=>x.id===target.id);
+  list.splice(ti<0?list.length:ti,0,dragged);   // drop before the target row
+  list.forEach((it,i)=>it.position=i);
+  renderView();
+  await Promise.all(list.map(it=>sb.from('items').update({position:it.position}).eq('id',it.id)));
+}
+function toggleSel(id,on){if(on)selected.add(id);else selected.delete(id);renderBatchBar()}
+function clearSel(){selected.clear();renderView()}
+function renderBatchBar(){
+  let bb=document.getElementById('batchbar');
+  if(!selected.size||view!=='table'){if(bb)bb.remove();return}
+  if(!bb){bb=document.createElement('div');bb.id='batchbar';document.body.appendChild(bb)}
+  bb.innerHTML=`<b>Modify ${selected.size} item(s) in bulk</b>
+    <button class="btn sm" onclick="batchModify()">Change value</button>
+    <button class="btn sm" style="background:var(--danger)" onclick="batchDelete()">Delete</button>
+    <button class="btn sm ghost" onclick="clearSel()">Clear</button>`;
+}
+async function batchDelete(){
+  const ids=[...selected];if(!ids.length)return;
+  if(!confirm('Delete '+ids.length+' selected item(s)? Subitems of selected items are also removed.'))return;
+  const childIds=items.filter(x=>x.parent_id&&ids.includes(x.parent_id)&&!ids.includes(x.id)).map(x=>x.id);
+  const all=[...new Set([...ids,...childIds])];
+  const {error}=await sb.from('items').delete().in('id',all);
+  if(error)return toast(error.message);
+  items=items.filter(x=>!all.includes(x.id));
+  selected.clear();renderView();toast(ids.length+' deleted');
+}
+function batchModify(){
+  const sel=items.filter(x=>selected.has(x.id));
+  const hasItem=sel.some(x=>!x.parent_id),hasSub=sel.some(x=>x.parent_id);
+  const opts=cols.filter(c=>(c.scope==='item'&&hasItem)||(c.scope==='subitem'&&hasSub));
+  if(!opts.length)return toast('No applicable columns for the selection');
+  overlay(`<h3>Change value — ${selected.size} item(s)</h3>
+    <div class="row"><span class="small" style="width:70px">Column</span>
+      <select id="bmCol" onchange="bmValueUI()">${opts.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.scope})</option>`).join('')}</select></div>
+    <div class="row"><span class="small" style="width:70px">Value</span><span id="bmVal"></span></div>
+    <p class="small">Applies only to selected rows matching the column's scope.</p>
+    <button class="btn" style="align-self:flex-start" onclick="batchApply()">Apply</button>`);
+  bmValueUI();
+}
+function bmValueUI(){
+  const c=cols.find(x=>x.id===$('bmCol').value);const w=$('bmVal');
+  if(c.type==='status')w.innerHTML=`<select id="bmInput"><option value="">— clear</option>${(c.options.labels||[]).map(l=>`<option>${esc(l.name)}</option>`).join('')}</select>`;
+  else if(c.type==='person'||c.type==='label'){const ch=c.options.choices||[];w.innerHTML=`<input id="bmInput" list="bmList" placeholder="value"><datalist id="bmList">${ch.map(o=>`<option>${esc(o)}</option>`).join('')}</datalist>`}
+  else if(c.type==='date')w.innerHTML=`<input id="bmInput" type="date">`;
+  else if(c.type==='number')w.innerHTML=`<input id="bmInput" type="number" step="any">`;
+  else if(c.type==='checkbox')w.innerHTML=`<select id="bmInput"><option value="">unchecked</option><option value="1">checked</option></select>`;
+  else w.innerHTML=`<input id="bmInput" placeholder="value">`;
+}
+async function batchApply(){
+  const c=cols.find(x=>x.id===$('bmCol').value);const raw=$('bmInput')?.value??'';
+  const targets=items.filter(x=>selected.has(x.id)&&((x.parent_id?'subitem':'item')===c.scope));
+  if(!targets.length)return toast('No selected rows in this column scope');
+  if(!confirm('Set '+c.name+' = "'+raw+'" on '+targets.length+' '+c.scope+'(s)?'))return;
+  const val=c.type==='checkbox'?!!raw:raw;
+  for(const it of targets){it.col_values={...it.col_values,[c.id]:val};await sb.from('items').update({col_values:it.col_values}).eq('id',it.id)}
+  document.querySelector('.overlay')?.remove();
+  renderView();toast('Applied to '+targets.length+' item(s)');
 }
 function promptAdd(groupId,parentId){
   const n=prompt(parentId?'Subitem name:':'Item name:');if(!n)return;
