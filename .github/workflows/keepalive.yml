@@ -8,4 +8,5 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ping Supabase REST
-        run: curl -s -o /dev/null -w "%{http_code}\n" "https://ybzrpqgofxkzaqasfsna.supabase.co/rest/v1/boards?select=id&limit=1" -H "apikey: sb_publishable_0I8ZhiGBgfjWKBwTHV3TSA_11Kj3Jid"
+        run: |
+          curl -s -o /dev/null -w "%{http_code}\n" "https://ybzrpqgofxkzaqasfsna.supabase.co/rest/v1/boards?select=id&limit=1" -H "apikey: sb_publishable_0I8ZhiGBgfjWKBwTHV3TSA_11Kj3Jid"
