@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lunes</title><!-- v2.7 -->
+<title>Lunes</title><!-- v2.8 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -142,6 +142,10 @@ hr{border:none;border-top:1px solid var(--border)}
 tr.dragrow>td{box-shadow:inset 0 2px 0 0 var(--accent)}
 #batchbar{position:fixed;bottom:70px;left:50%;transform:translateX(-50%);background:#22242e;color:#fff;padding:8px 12px;border-radius:10px;display:flex;gap:8px;align-items:center;z-index:80;box-shadow:0 8px 30px rgba(0,0,0,.28);font-size:13px}
 #batchbar .btn{padding:5px 11px}
+tr.ghost>td{opacity:.5;background:repeating-linear-gradient(45deg,transparent,transparent 6px,rgba(79,110,247,.045) 6px,rgba(79,110,247,.045) 12px)}
+tr.ghost .nm{font-style:italic}
+.pendtag{background:var(--accent-soft);color:var(--accent);border-radius:8px;font-size:10px;padding:1px 6px;font-weight:700;margin-left:4px;white-space:nowrap}
+#tab-aiinput{font-weight:600}
 </style>
 </head>
 <body>
@@ -176,6 +180,7 @@ tr.dragrow>td{box-shadow:inset 0 2px 0 0 var(--accent)}
         <button id="tab-table" class="active" onclick="setView('table')">Table</button>
         <button id="tab-kanban" onclick="setView('kanban')">Kanban</button>
         <button id="tab-calendar" onclick="setView('calendar')">Calendar</button>
+        <button id="tab-aiinput" onclick="setView('aiinput')">✨ AI Input<span id="aiCount"></span></button>
       </div>
       <div id="topRight">
         <button class="btn sm ghost" onclick="openFilters()">⚲ Filter<span id="fBadge"></span></button>
@@ -211,6 +216,7 @@ function addMonth(ds){const p=ds.split('-').map(Number);let ny=p[0],nm=p[1]+1;if
 // stamp a "<prefix> MM/YYYY" name: replace an existing MM/YYYY pattern, else append
 function stampMonthName(name,stamp){const re=/\b\d{1,2}\/\d{4}\b/;return re.test(name)?name.replace(re,stamp):(name+' '+stamp)}
 const monthStamp=()=>{const n=new Date();return String(n.getMonth()+1).padStart(2,'0')+'/'+n.getFullYear()};
+const isPending=it=>!!(it&&it.col_values&&it.col_values._pending);
 function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';clearTimeout(t._h);t._h=setTimeout(()=>t.style.display='none',2600)}
 const fmtMoney=n=>'R$ '+Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:2});
 
@@ -300,9 +306,9 @@ function exportBoardCSV(){
   const head=['Group','Level','Name',...ic.map(c=>'I: '+c.name),...sc.map(c=>'S: '+c.name)];
   const rows=[head];
   for(const g of groups){
-    for(const it of topItems().filter(x=>x.group_id===g.id)){
+    for(const it of topItems().filter(x=>x.group_id===g.id&&!isPending(x))){
       rows.push([g.name,'Item',it.name,...ic.map(c=>csvCell(it,c)),...sc.map(()=>'')]);
-      for(const s of subsOf(it.id))rows.push([g.name,'Subitem',s.name,...ic.map(()=>''),...sc.map(c=>csvCell(s,c))]);
+      for(const s of subsOf(it.id).filter(x=>!isPending(x)))rows.push([g.name,'Subitem',s.name,...ic.map(()=>''),...sc.map(c=>csvCell(s,c))]);
     }
   }
   const csv=rows.map(r=>r.map(csvEsc).join(',')).join('\r\n');
@@ -392,7 +398,7 @@ async function setCell(itemId,colId,val){
   }
   it.col_values={...it.col_values,[colId]:val};
   await updateItem(it,{col_values:it.col_values},col.name,old,val);
-  if(col.type==='status')runAutomations('status_changes',it,{colId,value:val});
+  if(col.type==='status'&&!isPending(it))runAutomations('status_changes',it,{colId,value:val});
   renderView();if(panelItem===itemId)renderPanel();
 }
 async function logActivity(itemId,field,oldV,newV){
@@ -502,7 +508,7 @@ const itemVisible=it=>passFilter(it)&&(!subFiltersActive()||subsOf(it.id).some(p
 function numPair(){const i=itemCols().find(c=>c.type==='number');const s=subCols().find(c=>c.type==='number');return (i&&s)?{i,s}:null}
 function subSum(it){
   const p=numPair();if(!p)return null;
-  const withVal=subsOf(it.id).filter(s=>s.col_values[p.s.id]!==''&&s.col_values[p.s.id]!=null);
+  const withVal=subsOf(it.id).filter(s=>!isPending(s)&&s.col_values[p.s.id]!==''&&s.col_values[p.s.id]!=null);
   if(!withVal.length)return null;
   return withVal.reduce((t,s)=>t+(parseFloat(s.col_values[p.s.id])||0),0);
 }
@@ -518,11 +524,13 @@ function forceItemTotal(e,itemId,colId){
 }
 
 /* ================= VIEWS ================= */
-function setView(v){view=v;['table','kanban','calendar'].forEach(x=>$('tab-'+x).classList.toggle('active',x===v));renderView()}
+function setView(v){view=v;['table','kanban','calendar','aiinput'].forEach(x=>$('tab-'+x).classList.toggle('active',x===v));renderView()}
 function renderView(){
   if(!curBoard)return;
+  updateAiCount();
   if(view==='table')renderTable();
   else if(view==='kanban')renderKanban();
+  else if(view==='aiinput')renderAIInput();
   else renderCalendar();
   renderBatchBar();
 }
@@ -612,7 +620,7 @@ function renderTable(){
     const isCol=collapsed[g.id];
     // sums (uses effective value: subitem sum or manual)
     const sums=ic.filter(c=>c.type==='number').map(c=>{
-      const t=gi.reduce((s,it)=>s+effNum(it,c),0);
+      const t=gi.filter(x=>!isPending(x)).reduce((s,it)=>s+effNum(it,c),0);
       return {c,t};
     });
     const W=colW();
@@ -629,6 +637,7 @@ function renderTable(){
       for(const it of gi){
         const subs=subsOf(it.id).slice().sort((a,b)=>(a.position||0)-(b.position||0));
         const shown=collapsed['x'+it.id]||subFiltersActive();
+        if(isPending(it)){html+=ghostItemRow(it,ic,subs.length);continue}
         html+=`<tr class="item" ondragover="rowOver(event)" ondragleave="rowLeave(event)" ondrop="rowDrop(event,'${it.id}','item')"><td><div class="iname">
           <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
           <span class="drag" draggable="true" ondragstart="rowDragStart(event,'${it.id}','item')" ondragend="rowDragEnd(event)" title="Drag to reorder">⠿</span>
@@ -647,6 +656,7 @@ function renderTable(){
             ${sc.map(c=>`<th style="width:${W['s_'+c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'s_${c.id}')"></span></th>`).join('')}
             <th style="width:40px"></th></tr>`;
           for(const s of subs.filter(s=>passFilter(s))){
+            if(isPending(s)){html+=ghostSubRow(s,sc);continue}
             html+=`<tr class="subrow" ondragover="rowOver(event)" ondragleave="rowLeave(event)" ondrop="rowDrop(event,'${s.id}','sub')"><td><div class="iname">
               <input type="checkbox" class="selbox" ${selected.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${s.id}',this.checked)">
               <span class="drag" draggable="true" ondragstart="rowDragStart(event,'${s.id}','sub')" ondragend="rowDragEnd(event)" title="Drag to reorder">⠿</span>
@@ -710,13 +720,99 @@ function toggleSel(id,on){if(on)selected.add(id);else selected.delete(id);render
 function clearSel(){selected.clear();renderView()}
 function renderBatchBar(){
   let bb=document.getElementById('batchbar');
-  if(!selected.size||view!=='table'){if(bb)bb.remove();return}
+  if(!selected.size||(view!=='table'&&view!=='aiinput')){if(bb)bb.remove();return}
   if(!bb){bb=document.createElement('div');bb.id='batchbar';document.body.appendChild(bb)}
-  bb.innerHTML=`<b>Modify ${selected.size} item(s) in bulk</b>
+  const anyPending=[...selected].some(id=>{const it=items.find(x=>x.id===id);return it&&isPending(it)});
+  bb.innerHTML=`<b>${selected.size} selected</b>
+    ${anyPending?`<button class="btn sm" style="background:var(--ok)" onclick="aiApprove([...selected])">Approve</button>`:''}
     <button class="btn sm" onclick="batchModify()">Change value</button>
     <button class="btn sm" style="background:var(--danger)" onclick="batchDelete()">Delete</button>
     <button class="btn sm ghost" onclick="clearSel()">Clear</button>`;
 }
+/* ===== Fase 2: AI Input approval layer ===== */
+function updateAiCount(){const n=items.filter(isPending).length;const b=$('aiCount');if(b)b.textContent=n?' ('+n+')':'';const t=$('tab-aiinput');if(t)t.style.color=n?'var(--accent)':''}
+function cellRO(it,col){
+  const v=it.col_values?.[col.id];
+  if(col.type==='status'){const lbl=(col.options.labels||[]).find(l=>l.name===v);return v?`<span class="status-chip" style="background:${lbl?lbl.color:'#c4c4c4'};cursor:default">${esc(v)}</span>`:'<span class="small">—</span>'}
+  if(col.type==='checkbox')return v?'✓':'';
+  if(col.type==='link')return v?'<span class="small">🔗 link</span>':'';
+  if(col.type==='number'&&v!==''&&v!=null)return esc(fmtMoney(v));
+  return esc(v??'');
+}
+function ghostItemRow(it,ic,n){
+  return `<tr class="item ghost"><td><div class="iname">
+    <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
+    <span class="exp">·</span><span class="nm">${esc(it.name)}</span><span class="pendtag">AI pending</span>${n?`<span class="small">${n} sub</span>`:''}
+  </div></td>${ic.map(c=>`<td>${cellRO(it,c)}</td>`).join('')}
+  <td style="white-space:nowrap"><button class="icon-btn" style="color:var(--green)" title="Approve" onclick="approveItem('${it.id}')">✓</button><button class="icon-btn" style="color:var(--danger)" title="Reject" onclick="rejectItem('${it.id}')">✗</button></td></tr>`;
+}
+function ghostSubRow(s,sc){
+  return `<tr class="subrow ghost"><td><div class="iname">
+    <input type="checkbox" class="selbox" ${selected.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${s.id}',this.checked)">
+    <span class="nm">${esc(s.name)}</span><span class="pendtag">AI pending</span>
+  </div></td>${sc.map(c=>`<td>${cellRO(s,c)}</td>`).join('')}
+  <td style="white-space:nowrap"><button class="icon-btn" style="color:var(--green)" onclick="approveItem('${s.id}')">✓</button><button class="icon-btn" style="color:var(--danger)" onclick="rejectItem('${s.id}')">✗</button></td></tr>`;
+}
+function renderAIInput(){
+  const pend=items.filter(isPending);
+  const el=$('content');
+  if(!pend.length){el.innerHTML=`<div style="margin-top:50px;text-align:center;line-height:1.6" class="small">✨ No pending AI items.<br>Items proposed by the AI (in-app chat or Google Chat) will appear here for you to review, edit and approve before they go live.</div>`;return}
+  const ic=itemCols(),sc=subCols();
+  const top=pend.filter(x=>!x.parent_id);
+  const orphan=pend.filter(x=>x.parent_id&&!isPending(items.find(y=>y.id===x.parent_id)||{}));
+  let html=`<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:14px 0 8px">
+    <b>${pend.length} pending item(s)</b>
+    <button class="btn sm" onclick="aiSelectAll()">Select all</button>
+    <button class="btn sm" style="background:var(--green)" onclick="aiApproveAll()">Approve all</button>
+    <span class="small">Edit any value inline before approving.</span></div>`;
+  for(const g of groups){
+    const gi=top.filter(x=>x.group_id===g.id).sort((a,b)=>(a.position||0)-(b.position||0));
+    if(!gi.length)continue;
+    html+=`<div class="group"><div class="group-head"><h3 style="color:${g.color}">${esc(g.name)}</h3></div>
+      <table class="gtable" style="width:auto"><tr><th style="min-width:240px">Item</th>${ic.map(c=>`<th>${esc(c.name)}</th>`).join('')}<th style="width:120px"></th></tr>`;
+    for(const it of gi){
+      html+=`<tr class="item"><td><div class="iname">
+        <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
+        <span class="nm" data-nm="${it.id}" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
+        <button class="nm-edit" title="Rename" onclick="startRename(event,'${it.id}')">✎</button></div></td>
+        ${ic.map(c=>`<td>${cellHtml(it,c)}</td>`).join('')}
+        <td style="white-space:nowrap"><button class="btn sm" style="background:var(--green)" onclick="aiApprove(['${it.id}'])">Approve</button> <button class="icon-btn" style="color:var(--danger)" onclick="rejectItem('${it.id}')">✗</button></td></tr>`;
+      const subs=subsOf(it.id).slice().sort((a,b)=>(a.position||0)-(b.position||0));
+      if(subs.length){
+        html+=`<tr class="subwrap"><td colspan="${ic.length+2}"><table class="gtable subtable" style="width:auto"><tr><th style="min-width:200px">Subitem</th>${sc.map(c=>`<th>${esc(c.name)}</th>`).join('')}<th style="width:40px"></th></tr>`;
+        for(const sb of subs){
+          html+=`<tr class="subrow"><td><div class="iname"><span class="nm" data-nm="${sb.id}" ondblclick="startRename(event,'${sb.id}')">${esc(sb.name)}</span></div></td>${sc.map(c=>`<td>${cellHtml(sb,c)}</td>`).join('')}<td></td></tr>`;
+        }
+        html+=`</table></td></tr>`;
+      }
+    }
+    html+=`</table></div>`;
+  }
+  if(orphan.length){
+    html+=`<div class="group"><div class="group-head"><h3>Pending subitems (on existing items)</h3></div>
+      <table class="gtable" style="width:auto"><tr><th style="min-width:200px">Subitem</th><th>Parent</th>${sc.map(c=>`<th>${esc(c.name)}</th>`).join('')}<th style="width:120px"></th></tr>`;
+    for(const sb of orphan){
+      const par=items.find(y=>y.id===sb.parent_id);
+      html+=`<tr class="subrow"><td><div class="iname"><input type="checkbox" class="selbox" ${selected.has(sb.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${sb.id}',this.checked)"><span class="nm" data-nm="${sb.id}" ondblclick="startRename(event,'${sb.id}')">${esc(sb.name)}</span></div></td><td class="small">${esc(par?par.name:'?')}</td>${sc.map(c=>`<td>${cellHtml(sb,c)}</td>`).join('')}<td style="white-space:nowrap"><button class="btn sm" style="background:var(--green)" onclick="aiApprove(['${sb.id}'])">Approve</button> <button class="icon-btn" style="color:var(--danger)" onclick="rejectItem('${sb.id}')">✗</button></td></tr>`;
+    }
+    html+=`</table></div>`;
+  }
+  el.innerHTML=html;
+}
+async function aiApprove(ids){
+  ids=(ids||[]).filter(id=>{const it=items.find(x=>x.id===id);return it&&isPending(it)});
+  if(!ids.length)return;
+  for(const id of ids){
+    const it=items.find(x=>x.id===id);const cv={...it.col_values};delete cv._pending;delete cv._ai_note;it.col_values=cv;
+    await sb.from('items').update({col_values:cv}).eq('id',id);
+    if(!it.parent_id){for(const sb of subsOf(id).filter(isPending)){const scv={...sb.col_values};delete scv._pending;delete scv._ai_note;sb.col_values=scv;await sb.from('items').update({col_values:scv}).eq('id',sb.id)}}
+  }
+  selected.clear();renderView();toast(ids.length+' approved');
+}
+function approveItem(id){return aiApprove([id])}
+async function aiApproveAll(){const ids=items.filter(isPending).map(x=>x.id);if(!ids.length)return;if(!confirm('Approve all '+ids.length+' pending item(s)?'))return;await aiApprove(ids)}
+function aiSelectAll(){items.filter(isPending).forEach(x=>selected.add(x.id));renderView()}
+async function rejectItem(id){const it=items.find(x=>x.id===id);if(!it)return;if(!confirm('Delete pending "'+it.name+'"? This removes it (and its subitems).'))return;const childIds=items.filter(x=>x.parent_id===id).map(x=>x.id);const all=[id,...childIds];const {error}=await sb.from('items').delete().in('id',all);if(error)return toast(error.message);items=items.filter(x=>!all.includes(x.id));selected.delete(id);renderView();toast('Deleted')}
 async function batchDelete(){
   const ids=[...selected];if(!ids.length)return;
   if(!confirm('Delete '+ids.length+' selected item(s)? Subitems of selected items are also removed.'))return;
@@ -781,7 +877,7 @@ function renderKanban(){
   const col=kanbanStatusCol();
   if(!col){$('content').innerHTML='<p class="small" style="margin-top:30px">Add a status column to use Kanban.</p>';return}
   const labels=col.options.labels||[];
-  const pool=topItems().filter(itemVisible);
+  const pool=topItems().filter(x=>itemVisible(x)&&!isPending(x));
   const other=cols.filter(c=>c.scope==='item'&&c.type==='status'&&c.id!==col.id);
   let html=`<div class="row" style="padding:14px 0 0"><span class="small">Kanban by:</span>
     <select onchange="curBoard.kstatus=this.value;renderView()">${cols.filter(c=>c.scope==='item'&&c.type==='status').map(c=>`<option value="${c.id}" ${c.id===col.id?'selected':''}>${esc(c.name)}</option>`).join('')}</select></div>`;
@@ -841,7 +937,7 @@ function renderCalendar(){
     <select onchange="curBoard.cdate=this.value;renderView()">${dateCols.map(c=>`<option value="${c.id}" ${!both&&c.id===dcol.id?'selected':''}>${esc(c.name)} (${c.scope})</option>`).join('')}<option value="both" ${both?'selected':''}>Both (item + subitem)</option></select>
   </div><div class="calgrid">`;
   ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'].forEach(d=>html+=`<div class="caldow">${d}</div>`);
-  const pool=items.filter(it=>passFilter(it));
+  const pool=items.filter(it=>passFilter(it)&&!isPending(it));
   const today=todayStr();
   for(let cell=0;cell<Math.ceil((startDow+daysIn)/7)*7;cell++){
     const dnum=cell-startDow+1;
@@ -1215,12 +1311,13 @@ async function runTimeAutomations(){
     if(t.type==='monthly'){
       if((t.last_run||'')>=ym||now.getDate()<t.day)continue;
       // duplicate/notify/etc every top item of the source group
-      const src=bItems.filter(x=>x.group_id===t.groupId&&!x.parent_id);
+      const src=bItems.filter(x=>x.group_id===t.groupId&&!x.parent_id&&!isPending(x));
       for(const it of src)await execTimeAction(a,it,allBoards,allGroups,allCols,allItems);
       t.last_run=ym;
       await sb.from('automations').update({trigger:t}).eq('id',a.id);
     }else if(t.type==='date_arrives'){
       for(const it of bItems){
+        if(isPending(it))continue;
         const dv=it.col_values?.[t.colId];
         if(!dv||dv>today)continue;
         const done=it.col_values['_auto_'+a.id];
@@ -1232,7 +1329,7 @@ async function runTimeAutomations(){
     }else if(t.type==='auto_date_duplication'){
       // fire at most once per calendar month, when any source-group item's Ref date has arrived
       if((t.last_run||'')>=ym)continue;
-      const srcTop=bItems.filter(x=>x.group_id===t.srcGroup&&!x.parent_id);
+      const srcTop=bItems.filter(x=>x.group_id===t.srcGroup&&!x.parent_id&&!isPending(x));
       const arrived=srcTop.some(it=>{const dv=it.col_values?.[t.dateCol];return dv&&dv<=today});
       if(!arrived)continue;
       const stamp=monthStamp();
@@ -1246,7 +1343,7 @@ async function runTimeAutomations(){
         if(subs.length)await sb.from('items').insert(subs);
       }
       // 2) push originals' date columns (items + subitems of the source group) forward exactly 1 month
-      const srcAll=bItems.filter(x=>x.group_id===t.srcGroup);
+      const srcAll=bItems.filter(x=>x.group_id===t.srcGroup&&!isPending(x));
       for(const it of srcAll){
         const dcols=bCols.filter(c=>c.type==='date'&&c.scope===(it.parent_id?'subitem':'item'));
         let cv={...it.col_values},ch=false;
