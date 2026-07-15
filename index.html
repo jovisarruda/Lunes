@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lunes</title><!-- v2.8 -->
+<title>Lunes</title><!-- v2.9 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -780,8 +780,8 @@ function renderAIInput(){
       const subs=subsOf(it.id).slice().sort((a,b)=>(a.position||0)-(b.position||0));
       if(subs.length){
         html+=`<tr class="subwrap"><td colspan="${ic.length+2}"><table class="gtable subtable" style="width:auto"><tr><th style="min-width:200px">Subitem</th>${sc.map(c=>`<th>${esc(c.name)}</th>`).join('')}<th style="width:40px"></th></tr>`;
-        for(const sb of subs){
-          html+=`<tr class="subrow"><td><div class="iname"><span class="nm" data-nm="${sb.id}" ondblclick="startRename(event,'${sb.id}')">${esc(sb.name)}</span></div></td>${sc.map(c=>`<td>${cellHtml(sb,c)}</td>`).join('')}<td></td></tr>`;
+        for(const su of subs){
+          html+=`<tr class="subrow"><td><div class="iname"><span class="nm" data-nm="${su.id}" ondblclick="startRename(event,'${su.id}')">${esc(su.name)}</span></div></td>${sc.map(c=>`<td>${cellHtml(su,c)}</td>`).join('')}<td></td></tr>`;
         }
         html+=`</table></td></tr>`;
       }
@@ -791,9 +791,9 @@ function renderAIInput(){
   if(orphan.length){
     html+=`<div class="group"><div class="group-head"><h3>Pending subitems (on existing items)</h3></div>
       <table class="gtable" style="width:auto"><tr><th style="min-width:200px">Subitem</th><th>Parent</th>${sc.map(c=>`<th>${esc(c.name)}</th>`).join('')}<th style="width:120px"></th></tr>`;
-    for(const sb of orphan){
-      const par=items.find(y=>y.id===sb.parent_id);
-      html+=`<tr class="subrow"><td><div class="iname"><input type="checkbox" class="selbox" ${selected.has(sb.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${sb.id}',this.checked)"><span class="nm" data-nm="${sb.id}" ondblclick="startRename(event,'${sb.id}')">${esc(sb.name)}</span></div></td><td class="small">${esc(par?par.name:'?')}</td>${sc.map(c=>`<td>${cellHtml(sb,c)}</td>`).join('')}<td style="white-space:nowrap"><button class="btn sm" style="background:var(--green)" onclick="aiApprove(['${sb.id}'])">Approve</button> <button class="icon-btn" style="color:var(--danger)" onclick="rejectItem('${sb.id}')">✗</button></td></tr>`;
+    for(const su of orphan){
+      const par=items.find(y=>y.id===su.parent_id);
+      html+=`<tr class="subrow"><td><div class="iname"><input type="checkbox" class="selbox" ${selected.has(su.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${su.id}',this.checked)"><span class="nm" data-nm="${su.id}" ondblclick="startRename(event,'${su.id}')">${esc(su.name)}</span></div></td><td class="small">${esc(par?par.name:'?')}</td>${sc.map(c=>`<td>${cellHtml(su,c)}</td>`).join('')}<td style="white-space:nowrap"><button class="btn sm" style="background:var(--green)" onclick="aiApprove(['${su.id}'])">Approve</button> <button class="icon-btn" style="color:var(--danger)" onclick="rejectItem('${su.id}')">✗</button></td></tr>`;
     }
     html+=`</table></div>`;
   }
@@ -805,7 +805,7 @@ async function aiApprove(ids){
   for(const id of ids){
     const it=items.find(x=>x.id===id);const cv={...it.col_values};delete cv._pending;delete cv._ai_note;it.col_values=cv;
     await sb.from('items').update({col_values:cv}).eq('id',id);
-    if(!it.parent_id){for(const sb of subsOf(id).filter(isPending)){const scv={...sb.col_values};delete scv._pending;delete scv._ai_note;sb.col_values=scv;await sb.from('items').update({col_values:scv}).eq('id',sb.id)}}
+    if(!it.parent_id){for(const su of subsOf(id).filter(isPending)){const scv={...su.col_values};delete scv._pending;delete scv._ai_note;su.col_values=scv;await sb.from('items').update({col_values:scv}).eq('id',su.id)}}
   }
   selected.clear();renderView();toast(ids.length+' approved');
 }
