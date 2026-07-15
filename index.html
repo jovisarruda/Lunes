@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lunes</title><!-- v2.6 -->
+<title>Lunes</title><!-- v2.7 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -608,7 +608,7 @@ function renderTable(){
   const ic=itemCols(),sc=subCols();
   let html='';
   for(const g of groups){
-    const gi=topItems().filter(x=>x.group_id===g.id&&itemVisible(x));
+    const gi=topItems().filter(x=>x.group_id===g.id&&itemVisible(x)).sort((a,b)=>(a.position||0)-(b.position||0));
     const isCol=collapsed[g.id];
     // sums (uses effective value: subitem sum or manual)
     const sums=ic.filter(c=>c.type==='number').map(c=>{
@@ -627,7 +627,7 @@ function renderTable(){
       const sw=(W.s_name||260)+sc.reduce((t,c)=>t+(W['s_'+c.id]||140),0)+40;
       html+=`<table class="gtable" style="table-layout:fixed;width:${tw}px"><tr><th style="width:${W.name||300}px;position:relative">Item<span class="rz" onmousedown="rzStart(event,'name')"></span></th>${ic.map(c=>`<th style="width:${W[c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'${c.id}')"></span></th>`).join('')}<th style="width:40px"></th></tr>`;
       for(const it of gi){
-        const subs=subsOf(it.id);
+        const subs=subsOf(it.id).slice().sort((a,b)=>(a.position||0)-(b.position||0));
         const shown=collapsed['x'+it.id]||subFiltersActive();
         html+=`<tr class="item" ondragover="rowOver(event)" ondragleave="rowLeave(event)" ondrop="rowDrop(event,'${it.id}','item')"><td><div class="iname">
           <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
