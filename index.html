@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Lunes</title><!-- v2.4 -->
+<title>Lunes</title><!-- v2.5 -->
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
 :root{
@@ -275,8 +275,34 @@ function boardMenu(e){
   menu(e,[
     ['Rename board',async()=>{const n=prompt('New name:',curBoard.name);if(!n)return;await sb.from('boards').update({name:n}).eq('id',curBoard.id);curBoard.name=n;$('boardTitle').textContent=n;renderBoardNav()}],
     ['Add group',async()=>{const n=prompt('Group name:');if(!n)return;const {data}=await sb.from('groups').insert({board_id:curBoard.id,name:n,color:GROUP_COLORS[groups.length%GROUP_COLORS.length],position:groups.length}).select().single();groups.push(data);renderView()}],
+    ['⬇ Download CSV',()=>exportBoardCSV()],
     ['!Delete board',async()=>{if(!confirm('Delete board "'+curBoard.name+'" and ALL its data?'))return;await sb.from('boards').delete().eq('id',curBoard.id);boards=boards.filter(b=>b.id!==curBoard.id);curBoard=null;loadBoards()}]
   ]);
+}
+/* ===== CSV EXPORT (whole board: groups, items, subitems) ===== */
+function csvEsc(v){v=(v==null?'':String(v));return /[",\n\r;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+function csvCell(it,col){
+  const p=(typeof numPair==='function')?numPair():null;
+  if(col.type==='number'&&p&&!it.parent_id&&col.id===p.i.id){const ss=subSum(it);if(ss!=null)return ss}
+  const v=it.col_values?.[col.id];return v==null?'':v;
+}
+function exportBoardCSV(){
+  if(!curBoard)return;
+  const ic=itemCols(),sc=subCols();
+  const head=['Group','Level','Name',...ic.map(c=>'I: '+c.name),...sc.map(c=>'S: '+c.name)];
+  const rows=[head];
+  for(const g of groups){
+    for(const it of topItems().filter(x=>x.group_id===g.id)){
+      rows.push([g.name,'Item',it.name,...ic.map(c=>csvCell(it,c)),...sc.map(()=>'')]);
+      for(const s of subsOf(it.id))rows.push([g.name,'Subitem',s.name,...ic.map(()=>''),...sc.map(c=>csvCell(s,c))]);
+    }
+  }
+  const csv=rows.map(r=>r.map(csvEsc).join(',')).join('\r\n');
+  const blob=new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);
+  a.download=(curBoard.name.replace(/[^\w]+/g,'_').replace(/^_+|_+$/g,'')||'board')+'.csv';
+  document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  toast('CSV exported');
 }
 let navMin=localStorage.getItem('lunes_nav')==='min';
 function boardInitials(n){const w=n.replace(/[^A-Za-z0-9À-ú\s]/g,' ').trim().split(/\s+/).filter(Boolean);return ((w[0]?.[0]||'')+(w[1]?.[0]||w[0]?.[1]||'')).toUpperCase()}
