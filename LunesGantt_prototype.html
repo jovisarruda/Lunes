@@ -45,7 +45,10 @@
   .head{position:sticky;top:0;z-index:6;display:flex;height:var(--headH);background:var(--bg);border-bottom:1px solid var(--line)}
   .corner{position:sticky;left:0;z-index:7;width:var(--treeW);flex:0 0 var(--treeW);background:var(--bg);border-right:1px solid var(--line);display:flex;align-items:flex-end}
   .corner .cols{display:flex;width:100%;padding:0 8px 7px 8px;gap:8px}
-  .corner .c-name{flex:1;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px;padding-left:32px}
+  .corner .c-name{flex:1;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .corner .c-id{width:34px;flex:0 0 34px;text-align:right;padding-right:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .corner .c-sp{width:32px;flex:0 0 32px}
+  .corner .c-pred{width:104px;flex:0 0 104px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
   .corner .c-person{width:96px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
   .corner .c-date{width:74px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
   .col-resizer{position:absolute;top:0;right:-3px;bottom:0;width:8px;cursor:col-resize;z-index:9}
@@ -53,6 +56,25 @@
   .pcell{width:96px;flex:0 0 96px;color:var(--slate);cursor:pointer;padding:2px 4px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
   .pcell:hover{background:var(--line2)} .pcell.empty{color:var(--muted2)}
   .pcell input{width:92px;font:inherit;border:1px solid var(--green);border-radius:4px;padding:0 2px}
+  .idcell{width:34px;flex:0 0 34px;color:var(--muted2);font-size:11px;font-variant-numeric:tabular-nums;text-align:right;padding-right:6px}
+  .predcell{width:104px;flex:0 0 104px;color:var(--slate);cursor:pointer;padding:2px 4px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+  .predcell:hover{background:var(--line2)} .predcell.empty{color:var(--muted2)} .predcell.ro{cursor:default;color:var(--muted2)}
+  .predcell input{width:100px;font:inherit;border:1px solid var(--green);border-radius:4px;padding:0 2px}
+  /* chatbot */
+  #botFab{position:fixed;right:20px;bottom:20px;width:52px;height:52px;border-radius:50%;background:var(--green);color:#fff;border:0;font-size:22px;cursor:pointer;box-shadow:0 6px 20px rgba(20,30,40,.24);z-index:70}
+  #botFab:hover{background:var(--green-d)}
+  #botPanel{position:fixed;right:20px;bottom:84px;width:min(380px,92vw);height:min(520px,72vh);background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:0 16px 48px rgba(20,30,40,.22);z-index:71;display:none;flex-direction:column;overflow:hidden}
+  #botPanel.open{display:flex}
+  #botHead{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line);font-weight:700}
+  #botHead span{font-weight:500;color:var(--muted);font-size:11px;flex:1}
+  #botHead button{border:0;background:transparent;cursor:pointer;color:var(--muted);font-size:16px}
+  #botMsgs{flex:1;overflow:auto;padding:12px 14px;display:flex;flex-direction:column;gap:9px;background:var(--panel)}
+  .bmsg{max-width:86%;padding:8px 11px;border-radius:12px;font-size:13px;line-height:1.45;white-space:pre-wrap}
+  .bmsg.u{align-self:flex-end;background:var(--green);color:#fff;border-bottom-right-radius:3px}
+  .bmsg.a{align-self:flex-start;background:#fff;border:1px solid var(--line);border-bottom-left-radius:3px}
+  #botInputRow{display:flex;gap:8px;padding:10px;border-top:1px solid var(--line)}
+  #botInput{flex:1;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font:inherit}
+  #botSend{border:0;background:var(--green);color:#fff;border-radius:8px;padding:8px 14px;cursor:pointer;font:inherit}
   .corner .c-eff{width:58px;text-align:right;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
   .timehead{position:relative;flex:0 0 auto;height:var(--headH)}
   .th-top,.th-bot{position:absolute;left:0;right:0}
@@ -221,6 +243,18 @@
   .set-grid input,.set-grid select{border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit}
   .set-grid .chk{flex-direction:row;align-items:center;gap:8px}
   .set-grid .chk input{width:auto}
+  /* per-column resizable widths (driven by CSS vars, persisted) */
+  :root{--w-id:34px;--w-person:96px;--w-start:74px;--w-finish:74px;--w-eff:58px;--w-pred:104px}
+  .idcell,.corner .c-id{width:var(--w-id);flex:0 0 var(--w-id)}
+  .pcell,.corner .c-person{width:var(--w-person);flex:0 0 var(--w-person)}
+  .dcell.d-start,.corner .c-start{width:var(--w-start);flex:0 0 var(--w-start)}
+  .dcell.d-finish,.corner .c-finish{width:var(--w-finish);flex:0 0 var(--w-finish)}
+  .eff,.corner .c-eff{width:var(--w-eff);flex:0 0 var(--w-eff)}
+  .predcell,.corner .c-pred{width:var(--w-pred);flex:0 0 var(--w-pred)}
+  .corner .c-start,.corner .c-finish{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  .tcell{overflow:hidden}
+  .cres{width:7px;flex:0 0 7px;cursor:col-resize;align-self:stretch;z-index:8;margin:0 -3px}
+  .cres:hover{background:linear-gradient(90deg,transparent,rgba(31,157,99,.4))}
   @media print{
     .toolbar,#legend,.hint,.rowmenu,.drag-handle,.linkdot,.drop-line{display:none!important}
     .board{overflow:visible!important;height:auto!important}
@@ -248,7 +282,7 @@
   <div class="board" id="board">
     <div class="inner" id="inner">
       <div class="head" id="head">
-        <div class="corner"><div class="cols"><div class="c-name">Activity</div><div class="c-person">Person</div><div class="c-date">Start</div><div class="c-date">Finish</div><div class="c-eff">Effort</div></div><div class="col-resizer" id="colResizer" title="Drag to resize the list"></div></div>
+        <div class="corner"><div class="cols"><div class="c-id">ID</div><span class="cres" data-c="id"></span><div class="c-sp"></div><div class="c-name">Activity</div><div class="c-person">Person</div><span class="cres" data-c="person"></span><div class="c-start">Start</div><span class="cres" data-c="start"></span><div class="c-finish">Finish</div><span class="cres" data-c="finish"></span><div class="c-eff">Effort</div><span class="cres" data-c="effort"></span><div class="c-pred">Pred.</div><div style="width:22px;flex:0 0 22px"></div></div><div class="col-resizer" id="colResizer" title="Drag to resize the whole list panel"></div></div>
         <div class="timehead" id="timehead"></div>
       </div>
       <div class="rows" id="rows"></div>
@@ -262,6 +296,12 @@
 </div>
 <div class="drag-tip" id="tip"></div>
 <div class="drag-ghost" id="ghost"></div>
+<button id="botFab" title="Ask about this board">✨</button>
+<div id="botPanel">
+  <div id="botHead">Assistant <span>read-only · answers only</span><button id="botClose" title="Close">✕</button></div>
+  <div id="botMsgs"></div>
+  <div id="botInputRow"><input id="botInput" placeholder="Ask about the schedule…" autocomplete="off"><button id="botSend">Send</button></div>
+</div>
 
 <script>
 /* ============================================================
@@ -272,8 +312,11 @@
    ============================================================ */
 const $=id=>document.getElementById(id);
 const DAY=86400000, ROWH=34;
-let treeW=Math.min(900,Math.max(320,+(localStorage.getItem('lunesgantt.treeW'))||560));
+let treeW=Math.min(1000,Math.max(320,+(localStorage.getItem('lunesgantt.treeW'))||690));
 function applyTreeW(){document.documentElement.style.setProperty('--treeW',treeW+'px')}
+let colW={id:34,person:96,start:74,finish:74,effort:58,pred:104};
+try{const s=JSON.parse(localStorage.getItem('lunesgantt.colW'));if(s)colW=Object.assign(colW,s)}catch(e){}
+function applyColW(){const r=document.documentElement.style;r.setProperty('--w-id',colW.id+'px');r.setProperty('--w-person',colW.person+'px');r.setProperty('--w-start',colW.start+'px');r.setProperty('--w-finish',colW.finish+'px');r.setProperty('--w-eff',colW.effort+'px');r.setProperty('--w-pred',colW.pred+'px')}
 const pd=s=>{const[y,m,d]=s.split('-').map(Number);return Date.UTC(y,m-1,d)};
 const fd=t=>new Date(t).toISOString().slice(0,10);
 const addD=(s,n)=>fd(pd(s)+n*DAY);
@@ -344,6 +387,26 @@ let critSet=new Set(), critLinks=new Set();
 /* ---- tree helpers ---- */
 const isLeaf=t=>!tasks.some(x=>x.parent===t.id);
 const byId=id=>tasks.find(t=>t.id===id);
+/* sequential immutable IDs (predecessor reference codes) */
+let seq=0;
+function assignInitialCodes(){seq=0;for(const t of tasks)t.code=++seq}
+function nextCode(){seq=Math.max(seq,...tasks.map(t=>t.code||0));return ++seq}
+const byCode=c=>tasks.find(t=>t.code===c);
+function predText(t){return links.filter(l=>l.to===t.id).map(l=>{const s=byId(l.from);return s?(s.code+l.type):''}).filter(Boolean).join('; ')}
+function setPredecessors(t,text){
+  const entries=String(text==null?'':text).split(/[;,]/).map(s=>s.trim()).filter(Boolean);
+  const parsed=[],errors=[];
+  for(const e of entries){const m=e.match(/^(\d+)\s*(FS|SS|FF|SF)?$/i);if(!m){errors.push(e);continue}
+    const code=+m[1],type=(m[2]||'FS').toUpperCase();const src=byCode(code);
+    if(!src){errors.push(e+' (no ID)');continue} if(src.id===t.id){errors.push(e+' (self)');continue}
+    parsed.push({from:src.id,type})}
+  const backup=links.slice();
+  links=links.filter(l=>l.to!==t.id);
+  for(const p of parsed)if(!links.some(l=>l.from===p.from&&l.to===t.id))links.push({id:uid(),from:p.from,to:t.id,type:p.type});
+  if(topoLeaves()===null){links=backup;toast('That would create a dependency cycle — reverted.')}
+  else if(errors.length)toast('Ignored: '+errors.join(', '));
+  render();if(panelId===t.id)renderPanel();
+}
 function depth(t){let d=0,p=t.parent;while(p){d++;p=byId(p)?.parent}return d}
 function subtreeIds(id){const ids=[id];for(const c of tasks.filter(x=>x.parent===id))ids.push(...subtreeIds(c.id));return ids}
 function lastIdxSub(id){const s=new Set(subtreeIds(id));let last=-1;tasks.forEach((x,i)=>{if(s.has(x.id))last=i});return last}
@@ -416,9 +479,10 @@ function renderRows(){
     const idx=rowIndex[t.id];
     const row=document.createElement('div');row.className='trow';row.dataset.id=t.id;
     const lvl=Math.min(depth(t),2),leaf=isLeaf(t);
-    const tc=document.createElement('div');tc.className='tcell lvl'+lvl;tc.style.paddingLeft=(4+depth(t)*15)+'px';
+    const tc=document.createElement('div');tc.className='tcell lvl'+lvl;tc.style.paddingLeft='6px';
+    const idc=document.createElement('div');idc.className='idcell';idc.textContent=t.code!=null?t.code:'';
     const dh=document.createElement('div');dh.className='drag-handle';dh.textContent='⠿';dh.title='Drag to reorder';dh.addEventListener('mousedown',e=>startRowDrag(e,t));
-    const caret=document.createElement('div');caret.className='caret'+(leaf?' leaf':'');
+    const caret=document.createElement('div');caret.className='caret'+(leaf?' leaf':'');caret.style.marginLeft=(depth(t)*15)+'px';
     caret.innerHTML=leaf?'':`<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5L7 5L3 8.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" transform="${t.collapsed?'':'rotate(90 5 5)'}"/></svg>`;
     if(!leaf)caret.onclick=()=>{t.collapsed=!t.collapsed;render()};
     const nm=document.createElement('div');nm.className='name';nm.textContent=t.name;nm.title=t.name;nm.ondblclick=()=>startRename(nm,t);
@@ -427,21 +491,24 @@ function renderRows(){
     if(leaf){pc.title=t.person||'';pc.onclick=()=>startPersonEdit(pc,t)}
     const editableDates=leaf||t.manualDates;
     const sVal=leaf?t.start:effStart(t), eVal=leaf?(t.milestone?t.start:t.end):effEnd(t);
-    const sc=document.createElement('div');sc.className='dcell'+(editableDates?'':' ro')+(sVal?'':' empty');sc.textContent=sVal?fmtShort(sVal):'—';
+    const sc=document.createElement('div');sc.className='dcell d-start'+(editableDates?'':' ro')+(sVal?'':' empty');sc.textContent=sVal?fmtShort(sVal):'—';
     if(editableDates)sc.onclick=()=>startDateEdit(sc,t,'start');
-    const ec=document.createElement('div');ec.className='dcell'+(editableDates&&!t.milestone?'':' ro')+(eVal?'':' empty');ec.textContent=t.milestone?'◆':(eVal?fmtShort(eVal):'—');
+    const ec=document.createElement('div');ec.className='dcell d-finish'+(editableDates&&!t.milestone?'':' ro')+(eVal?'':' empty');ec.textContent=t.milestone?'◆':(eVal?fmtShort(eVal):'—');
     if(editableDates&&!t.milestone)ec.onclick=()=>startDateEdit(ec,t,'end');
     const eff=document.createElement('div');eff.className='eff'+((t.eff||0)===0?' zero':'');eff.textContent=leaf?((t.eff||0)+(t.effU||'h')):'';
     if(leaf)eff.onclick=()=>startEffEdit(eff,t);
+    const canPred=leaf;const pv=predText(t);
+    const prc=document.createElement('div');prc.className='predcell'+(canPred?'':' ro')+((canPred&&!pv)?' empty':'');prc.textContent=canPred?(pv||'—'):'';
+    if(canPred){prc.title=pv;prc.onclick=()=>startPredEdit(prc,t)}
     const mn=document.createElement('div');mn.className='rowmenu';mn.textContent='⋮';mn.title='Actions';mn.addEventListener('click',e=>{e.stopPropagation();openMenu(mn,t)});
-    tc.append(dh,caret,nm,pc,sc,ec,eff,mn);
+    tc.append(idc,dh,caret,nm,pc,sc,ec,eff,prc,mn);
     const tk=document.createElement('div');tk.className='track';tk.style.width=totalW+'px';tk.innerHTML=gridHTML;
     renderBar(tk,t,leaf);
     row.append(tc,tk);rows.appendChild(row);
   }
   const ar=document.createElement('div');ar.className='addroot';
   const arc=document.createElement('div');arc.className='tcell';arc.style.paddingLeft='20px';arc.textContent='+ Add activity';
-  arc.onclick=()=>{tasks.push({id:uid(),parent:null,name:'New activity',collapsed:false,start:addD(rangeStart,4),end:addD(rangeStart,10),eff:8,effU:'h',person:'',status:'To Do',cat:''});render()};
+  arc.onclick=()=>{tasks.push({id:uid(),code:nextCode(),parent:null,name:'New activity',collapsed:false,start:addD(rangeStart,4),end:addD(rangeStart,10),eff:8,effU:'h',person:'',status:'To Do',cat:''});render()};
   const art=document.createElement('div');art.className='track';art.style.width=totalW+'px';
   ar.append(arc,art);rows.appendChild(ar);
   const dl=document.createElement('div');dl.className='drop-line';dl.id='dropline';rows.appendChild(dl);
@@ -530,6 +597,7 @@ function renderLegend(){
 function startRename(nm,t){nm.contentEditable=true;nm.textContent=t.name;nm.focus();const r=document.createRange();r.selectNodeContents(nm);const sel=getSelection();sel.removeAllRanges();sel.addRange(r);const done=()=>{nm.contentEditable=false;const v=nm.textContent.trim();if(v)t.name=v;render()};nm.onblur=done;nm.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();nm.blur()}if(ev.key==='Escape'){nm.textContent=t.name;nm.blur()}}}
 function startEffEdit(cell,t){const cur=t.eff||0;cell.innerHTML=`<input type="number" min="0" value="${cur}">`;const inp=cell.querySelector('input');inp.focus();inp.select();let handled=false;const done=()=>{if(handled)return;handled=true;const v=Math.max(0,parseFloat(inp.value)||0);onEffortEdited(t,v)};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){handled=true;render()}}}
 function startPersonEdit(cell,t){const dl='dl'+uid();cell.innerHTML=`<input list="${dl}" value="${(t.person||'').replace(/"/g,'&quot;')}"><datalist id="${dl}">${peopleList.map(p=>`<option value="${p}">`).join('')}</datalist>`;const inp=cell.querySelector('input');inp.focus();inp.select();let handled=false;const done=()=>{if(handled)return;handled=true;const v=inp.value.trim();t.person=v;if(v&&!peopleList.includes(v))peopleList.push(v);if(v&&!dedication[v])dedication[v]={hours:settings.hoursPerDay,mode:'day'};render()};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){handled=true;render()}}}
+function startPredEdit(cell,t){const cur=predText(t);cell.innerHTML=`<input value="${escAttr(cur)}" placeholder="1FS; 10FS">`;const inp=cell.querySelector('input');inp.focus();inp.select();let handled=false;const done=()=>{if(handled)return;handled=true;setPredecessors(t,inp.value)};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){handled=true;render()}}}
 function startDateEdit(cell,t,which){const cur=which==='start'?t.start:(t.milestone?t.start:t.end);cell.innerHTML=`<input type="date" value="${cur||''}">`;const inp=cell.querySelector('input');inp.focus();let handled=false;const done=()=>{if(handled)return;handled=true;const v=inp.value;if(!v||v===cur)return render();if(which==='start')onStartEdited(t,v);else onEndEdited(t,v)};inp.onblur=done;inp.onchange=done;inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){handled=true;render()}}}
 
 /* ---- effort <-> dates coupling ---- */
@@ -659,11 +727,13 @@ function renderPanel(){
   }
   const sVal=leaf?t.start:effStart(t), eVal=leaf?(t.milestone?t.start:t.end):effEnd(t);
   const editableDates=leaf||t.manualDates;
-  let h=field('Person', leaf?`<input id="f-person" list="peopleDL" value="${escAttr(t.person||'')}">`:`<span class="ro">— (rolls up)</span>`);
+  let h=field('ID', `<span class="ro">#${t.code!=null?t.code:'—'}</span>`);
+  h+=field('Person', leaf?`<input id="f-person" list="peopleDL" value="${escAttr(t.person||'')}">`:`<span class="ro">— (rolls up)</span>`);
   h+=field('Start', editableDates?`<input type="date" id="f-start" value="${sVal||''}">`:`<span class="ro">${sVal?fmtShort(sVal):'—'}</span>`);
   h+=field('Finish', (editableDates&&!t.milestone)?`<input type="date" id="f-end" value="${eVal||''}">`:`<span class="ro">${t.milestone?'◆ milestone':(eVal?fmtShort(eVal):'—')}</span>`);
   h+=field('Effort', leaf?`<input type="number" min="0" id="f-eff" value="${t.eff||0}">`:`<span class="ro">—</span>`);
   if(leaf)h+=field('Milestone', `<label style="color:var(--slate)"><input type="checkbox" id="f-ms" ${t.milestone?'checked':''} style="width:auto;margin-right:6px">0-day milestone</label>`);
+  if(leaf)h+=field('Predecessors', `<input id="f-pred" value="${escAttr(predText(t))}" placeholder="e.g. 1FS; 10FS">`);
   for(const col of columns)h+=field(col.name, valEditor(t,col));
   body.innerHTML=`<p class="pmeta">${leaf?'Leaf task':'Summary'} · ${subtreeIds(t.id).length-1} sub-item(s)</p>`+h;
   if(leaf){
@@ -672,6 +742,7 @@ function renderPanel(){
     const E=body.querySelector('#f-end');if(E)E.onchange=()=>{if(E.value&&E.value!==t.end)onEndEdited(t,E.value)};
     const EF=body.querySelector('#f-eff');if(EF)EF.onchange=()=>onEffortEdited(t,Math.max(0,+EF.value||0));
     const MS=body.querySelector('#f-ms');if(MS)MS.onchange=()=>{t.milestone=MS.checked;if(MS.checked)t.end=t.start;logAct(t,'Milestone','',MS.checked);render();renderPanel()};
+    const PR=body.querySelector('#f-pred');if(PR)PR.onchange=()=>setPredecessors(t,PR.value);
   }
   for(const col of columns){const el=body.querySelector(`[data-col="${col.id}"]`);if(el)el.onchange=()=>setVal(t,col,col.type==='checkbox'?el.checked:el.value)}
   ensurePeopleDL();
@@ -698,10 +769,10 @@ function openColumnsEditor(){
   m.querySelectorAll('[data-delchoice]').forEach(b=>b.onclick=()=>{const[id,i]=b.dataset.delchoice.split('|');const c=columns.find(x=>x.id===id);c.options.choices.splice(+i,1);reopen()});
 }
 
-function newLeaf(parent,after){const s=after&&(after.end||after.start)?addD(after.milestone?after.start:after.end,1):(rangeStart?addD(rangeStart,4):'2026-08-03');return{id:uid(),parent,name:'New task',start:s,end:addD(s,3),eff:8,effU:'h',person:'',status:'To Do',cat:''}}
+function newLeaf(parent,after){const s=after&&(after.end||after.start)?addD(after.milestone?after.start:after.end,1):(rangeStart?addD(rangeStart,4):'2026-08-03');return{id:uid(),code:nextCode(),parent,name:'New task',start:s,end:addD(s,3),eff:8,effU:'h',person:'',status:'To Do',cat:''}}
 function addSibling(t){const n=newLeaf(t.parent,t);tasks.splice(lastIdxSub(t.id)+1,0,n);render()}
 function addChild(t){const last=leavesUnder(t.id).slice(-1)[0];const n=newLeaf(t.id,isLeaf(t)?null:last);delete t.start;delete t.end;delete t.milestone;t.collapsed=false;tasks.splice(lastIdxSub(t.id)+1,0,n);render()}
-function duplicate(t){const ids=subtreeIds(t.id);const map={};const clones=ids.map(id=>{const o=byId(id);const n={...o,id:uid()};map[id]=n.id;return{o,n}});clones.forEach(({o,n})=>{n.parent=o.parent===null?null:(map[o.parent]||o.parent)});clones[0].n.name=clones[0].o.name+' (copy)';tasks.splice(lastIdxSub(t.id)+1,0,...clones.map(c=>c.n));render()}
+function duplicate(t){const ids=subtreeIds(t.id);const map={};const clones=ids.map(id=>{const o=byId(id);const n={...o,id:uid()};map[id]=n.id;return{o,n}});clones.forEach(({o,n})=>{n.parent=o.parent===null?null:(map[o.parent]||o.parent);n.code=nextCode()});clones[0].n.name=clones[0].o.name+' (copy)';tasks.splice(lastIdxSub(t.id)+1,0,...clones.map(c=>c.n));render()}
 function promote(t){const par=byId(t.parent);if(!par)return;const gp=par.parent;const block=extractSubtree(t);block[0].parent=gp;tasks.splice(lastIdxSub(par.id)+1,0,...block);render()}
 function demote(t){const sibs=tasks.filter(x=>x.parent===t.parent);const i=sibs.indexOf(t);if(i<=0)return;const prev=sibs[i-1];const block=extractSubtree(t);block[0].parent=prev.id;prev.collapsed=false;delete prev.start;delete prev.end;delete prev.milestone;tasks.splice(lastIdxSub(prev.id)+1,0,...block);render()}
 function del(t){if(!confirm('Delete "'+t.name+'" and everything inside it?'))return;const s=new Set(subtreeIds(t.id));tasks=tasks.filter(x=>!s.has(x.id));links=links.filter(l=>!s.has(l.from)&&!s.has(l.to));render()}
@@ -872,7 +943,7 @@ function rowDragUp(){document.removeEventListener('mousemove',rowDragMove);docum
 
 /* ============================================================ PAN + toolbar */
 const board=$('board');
-board.addEventListener('mousedown',e=>{if(e.target.closest('.bar,.milestone,.summary,.h,.tcell,.rowmenu,.drag-handle,.menu,.linkdot,.col-resizer')||e.target.closest('svg')&&e.target.tagName==='path'&&e.target.classList.contains('dep'))return;const sx=e.clientX,sy=e.clientY,sl=board.scrollLeft,st=board.scrollTop;board.classList.add('panning');const mv=ev=>{board.scrollLeft=sl-(ev.clientX-sx);board.scrollTop=st-(ev.clientY-sy)};const up=()=>{board.classList.remove('panning');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)});
+board.addEventListener('mousedown',e=>{if(e.target.closest('.bar,.milestone,.summary,.h,.tcell,.rowmenu,.drag-handle,.menu,.linkdot,.col-resizer,.cres,.corner')||e.target.closest('svg')&&e.target.tagName==='path'&&e.target.classList.contains('dep'))return;const sx=e.clientX,sy=e.clientY,sl=board.scrollLeft,st=board.scrollTop;board.classList.add('panning');const mv=ev=>{board.scrollLeft=sl-(ev.clientX-sx);board.scrollTop=st-(ev.clientY-sy)};const up=()=>{board.classList.remove('panning');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)});
 board.addEventListener('wheel',e=>{if(e.shiftKey){board.scrollLeft+=e.deltaY;e.preventDefault()}},{passive:false});
 $('zoom').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;zoom=b.dataset.z;[...$('zoom').children].forEach(x=>x.classList.toggle('on',x===b));render()});
 $('btnCrit').addEventListener('click',()=>{critOn=!critOn;$('btnCrit').classList.toggle('on',critOn);render();if(critOn)showCriticalPopup()});
@@ -953,11 +1024,61 @@ function openSettings(){
 function exportPDF(){toast('Opening print dialog — choose “Save as PDF” (landscape A3 recommended).');setTimeout(()=>window.print(),450)}
 
 function initPeople(){peopleList=[...new Set(tasks.filter(isLeaf).map(t=>t.person).filter(Boolean))]}
-$('colResizer').addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const x0=e.clientX,w0=treeW;document.body.style.cursor='col-resize';document.body.style.userSelect='none';const mv=ev=>{treeW=Math.min(900,Math.max(320,w0+(ev.clientX-x0)));applyTreeW();render()};const up=()=>{document.body.style.cursor='';document.body.style.userSelect='';localStorage.setItem('lunesgantt.treeW',treeW);document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)});
+
+/* ============================================================ CHATBOT (read-only Q&A) */
+const fmtLong=s=>{const[y,m,d]=s.split('-');return (+d)+' '+MON[+m-1]+' '+y};
+function botAdd(text,who){const m=document.createElement('div');m.className='bmsg '+who;m.textContent=text;$('botMsgs').appendChild(m);$('botMsgs').scrollTop=$('botMsgs').scrollHeight}
+function botSendMsg(){const inp=$('botInput');const q=inp.value.trim();if(!q)return;botAdd(q,'u');inp.value='';setTimeout(()=>botAdd(botAnswer(q),'a'),140)}
+function botAnswer(q){
+  const s=q.toLowerCase().trim();if(!s)return 'Ask me something about this board.';
+  const leaves=tasks.filter(isLeaf);
+  const has=(...k)=>k.some(x=>s.includes(x));
+  const projStart=leaves.reduce((a,t)=>t.start&&(!a||pd(t.start)<pd(a))?t.start:a,null);
+  const projEnd=leaves.reduce((a,t)=>{const e=t.milestone?t.start:t.end;return e&&(!a||pd(e)>pd(a))?e:a},null);
+  const findTask=()=>{let best=null;for(const t of tasks){const n=(t.name||'').toLowerCase();if(n&&s.includes(n)&&(!best||n.length>best.name.length))best=t}
+    if(!best){const m=s.match(/#?\s*(\d+)/);if(m){const t=byCode(+m[1]);if(t)best=t}}return best};
+  if(has('help','ajuda','o que voc','what can you','pode fazer','como usar'))
+    return "I'm read-only — I answer questions but never add, change or remove anything. Try:\n• how many tasks\n• when does the project finish\n• critical path\n• dependencies of Front-end (or: predecessors of #10)\n• who is Front-end / tasks for Bruno\n• effort of Wireframes\n• is anything late\n• who is overloaded";
+  if(has('quant','how many','número','numero','count'))
+    {const g=tasks.filter(t=>!isLeaf(t)).length,ms=leaves.filter(t=>t.milestone).length;return `${tasks.length} items: ${leaves.length} tasks (${ms} milestones) + ${g} summary groups.`}
+  if(has('critical path','caminho crítico','caminho critico','crítico','critico'))
+    {computeCritical();const c=tasks.filter(t=>isLeaf(t)&&critSet.has(t.id)).sort((a,b)=>pd(a.start)-pd(b.start));return c.length?`Critical path (${c.length} activities):\n`+c.map(t=>`#${t.code} ${t.name}`).join(' → '):'No dependency chain to compute a critical path yet.'}
+  if(has('overload','sobrecarg','carga','workload'))
+    {const ppl=uniquePeople(),periods=periodsInRange('month'),over=[];for(const p of ppl){for(const pp of periods){let al=0;leaves.filter(t=>t.person===p).forEach(t=>al+=taskHoursInPeriod(t,pp.s,pp.e));if(al>availForPeriod(p,pp.s,pp.e)+0.5){over.push(`${p} (${pp.label})`);break}}}return over.length?'Overloaded: '+over.join(', ')+'. Check the Workload tab.':'No one is overloaded with the current dedication settings.'}
+  if(has('late','atras','risco','risk','overdue','vencid'))
+    {const late=leaves.filter(t=>{const e=t.milestone?t.start:t.end;return e&&pd(e)<pd(TODAY)&&t.status!=='Done'});return late.length?`${late.length} activity(ies) end before today and aren't Done:\n`+late.map(t=>`#${t.code} ${t.name}`).join(', '):'Nothing looks late relative to the demo "today" ('+fmtLong(TODAY)+').'}
+  const t=findTask();
+  if(t&&has('depend','predecess','antes','vem antes'))
+    {const pv=predText(t);return pv?`#${t.code} ${t.name} depends on: ${pv}.`:`#${t.code} ${t.name} has no predecessors.`}
+  if(t&&has('quem','who','respons','pessoa','person'))
+    return `#${t.code} ${t.name} — ${t.person||'nobody'} assigned.`;
+  if(t&&has('esforç','esforc','effort','horas','hours'))
+    return `#${t.code} ${t.name} — ${t.eff||0}h of effort.`;
+  if(t&&has('data','quando','when','date','prazo'))
+    return `#${t.code} ${t.name}: ${t.start?fmtLong(t.start):'—'} ${t.milestone?'(milestone)':'→ '+fmtLong(t.end)}.`;
+  if(has('finish','termina','acaba','fim','end ','deadline','conclu'))
+    {let r=projEnd?`Last activity finishes ${fmtLong(projEnd)}. `:'No dates yet. ';r+=`Deadline is ${fmtLong(deadline)}.`;if(projEnd&&pd(projEnd)>pd(deadline))r+=' ⚠ It overruns the deadline.';return r}
+  if(has('start','começa','comeca','kickoff','início','inicio'))
+    return `Kickoff is ${fmtLong(kickoff)}. First activity starts ${projStart?fmtLong(projStart):'—'}.`;
+  if(has('duração','duracao','how long','quanto tempo','span','dura'))
+    {if(!projStart)return 'No dates yet.';return `The project spans ${diffD(projStart,projEnd)+1} calendar days (${fmtLong(projStart)} → ${fmtLong(projEnd)}).`}
+  if(has('total') && has('effort','esforç','esforc','horas'))
+    {const tot=leaves.reduce((a,t)=>a+(t.eff||0),0);return `Total effort across all tasks: ${tot}h.`}
+  const person=uniquePeople().find(p=>s.includes(p.toLowerCase()));
+  if(person){const ts=leaves.filter(t=>t.person===person);return ts.length?`${person} has ${ts.length} task(s): `+ts.map(t=>`#${t.code} ${t.name}`).join(', '):`${person} has no tasks assigned.`}
+  if(t)return `#${t.code} ${t.name}: ${t.person||'—'}, ${t.start?fmtLong(t.start):'—'} ${t.milestone?'◆':'→ '+fmtLong(t.end)}, ${t.eff||0}h${predText(t)?', deps '+predText(t):''}.`;
+  return "I can answer about counts, dates, critical path, dependencies, effort, people and workload — but I can't add or change anything. Try naming a task, e.g. \"dependencies of Front-end\", or type \"help\".";
+}
+$('botFab').addEventListener('click',()=>{const p=$('botPanel');p.classList.toggle('open');if(p.classList.contains('open')){if(!$('botMsgs').children.length)botAdd("Hi! I'm a read-only assistant for this Project board — I answer questions but never change anything. Ask me things like: how many tasks, when does it finish, critical path, dependencies of Front-end, who is overloaded. Type \"help\" for more.",'a');$('botInput').focus()}});
+$('botClose').addEventListener('click',()=>$('botPanel').classList.remove('open'));
+$('botSend').addEventListener('click',botSendMsg);
+$('botInput').addEventListener('keydown',e=>{if(e.key==='Enter')botSendMsg()});
+$('colResizer').addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const x0=e.clientX,w0=treeW;document.body.style.cursor='col-resize';document.body.style.userSelect='none';const mv=ev=>{treeW=Math.min(1000,Math.max(320,w0+(ev.clientX-x0)));applyTreeW();render()};const up=()=>{document.body.style.cursor='';document.body.style.userSelect='';localStorage.setItem('lunesgantt.treeW',treeW);document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)});
+document.querySelectorAll('.cres').forEach(h=>h.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const c=h.dataset.c,x0=e.clientX,w0=colW[c];document.body.style.cursor='col-resize';document.body.style.userSelect='none';const mv=ev=>{colW[c]=Math.max(24,w0+(ev.clientX-x0));applyColW()};const up=()=>{document.body.style.cursor='';document.body.style.userSelect='';localStorage.setItem('lunesgantt.colW',JSON.stringify(colW));document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)}));
 
 let _toastT;function toast(msg){let el=$('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;left:50%;bottom:52px;transform:translateX(-50%);background:#2b3033;color:#fff;padding:9px 14px;border-radius:8px;font-size:12px;z-index:95;box-shadow:0 6px 24px rgba(0,0,0,.2);max-width:80vw;text-align:center;transition:opacity .3s';document.body.appendChild(el)}el.textContent=msg;el.style.opacity='1';clearTimeout(_toastT);_toastT=setTimeout(()=>el.style.opacity='0',3400)}
 
-initPeople();applyTreeW();render();
+assignInitialCodes();initPeople();applyTreeW();applyColW();render();
 </script>
 </body>
 </html>
