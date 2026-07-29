@@ -222,7 +222,7 @@ const STATUS_COLORS=['#c4c4c4','#fdab3d','#00c875','#e2445c','#579bfc','#a25ddc'
 
 /* ================= STATE ================= */
 let user=null, myName='';
-let boards=[], curBoard=null, groups=[], cols=[], items=[], automations=[], notifs=[];
+let boards=[], curBoard=null, groups=[], cols=[], items=[], automations=[], notifs=[], links=[];
 let view='table', collapsed={}, panelItem=null, panelTab='update';
 
 const $=id=>document.getElementById(id);
@@ -279,6 +279,9 @@ async function selectBoard(id){
     sb.from('automations').select('*').eq('board_id',id)
   ]);
   groups=g.data||[];cols=c.data||[];items=i.data||[];automations=a.data||[];
+  // B2 — dependency links (project boards only)
+  if(curBoard.template==='project'){const {data:lk}=await sb.from('links').select('*').eq('board_id',id);links=lk||[]}
+  else links=[];
   filters={search:'',cols:{}};fBadge();
   renderView();
 }
@@ -288,6 +291,36 @@ const subsOf=id=>items.filter(x=>x.parent_id===id);
 const topItems=()=>items.filter(x=>!x.parent_id);
 const isProjectBoard=()=>!!(curBoard&&curBoard.template==='project'); // B0 gate
 function descendantIds(id){const out=[];for(const c of items.filter(x=>x.parent_id===id)){out.push(c.id,...descendantIds(c.id))}return out}
+/* ===== B2 — Gantt persistence helpers (dependencies, codes, board settings) ===== */
+const DEP_TYPES=['FS','SS','FF','SF']; // FS=TI, SS=II, FF=TT, SF=IT
+const itemByCode=c=>items.find(x=>x.code===c);
+const depsOf=itemId=>links.filter(l=>l.to_item===itemId);       // predecessors of an item
+const succOf=itemId=>links.filter(l=>l.from_item===itemId);     // successors
+function predText(it){return depsOf(it.id).map(l=>{const s=items.find(x=>x.id===l.from_item);return s&&s.code!=null?(s.code+l.type):''}).filter(Boolean).join('; ')}
+async function addDep(fromId,toId,type,lag){
+  if(!fromId||!toId||fromId===toId)return;
+  if(links.some(l=>l.from_item===fromId&&l.to_item===toId))return;
+  const {data,error}=await sb.from('links').insert({board_id:curBoard.id,from_item:fromId,to_item:toId,type:type||'FS',lag:lag||0}).select().single();
+  if(error)return toast(error.message);
+  links.push(data);
+}
+async function removeDep(id){await sb.from('links').delete().eq('id',id);links=links.filter(l=>l.id!==id)}
+async function setDepType(id,type){const l=links.find(x=>x.id===id);if(!l)return;l.type=type;await sb.from('links').update({type}).eq('id',id)}
+// parse "1FS; 10SS" (default FS) and sync a project item's incoming links to it
+async function setPredecessors(it,text){
+  const entries=String(text==null?'':text).split(/[;,]/).map(s=>s.trim()).filter(Boolean);
+  const want=[];const errors=[];
+  for(const e of entries){const m=e.match(/^(\d+)\s*(FS|SS|FF|SF)?$/i);if(!m){errors.push(e);continue}
+    const src=itemByCode(+m[1]);if(!src){errors.push(e+' (no ID)');continue}if(src.id===it.id){errors.push(e+' (self)');continue}
+    want.push({from:src.id,type:(m[2]||'FS').toUpperCase()})}
+  const current=depsOf(it.id);
+  for(const l of current)if(!want.some(w=>w.from===l.from_item&&w.type===l.type))await removeDep(l.id);
+  for(const w of want)if(!links.some(l=>l.from_item===w.from&&l.to_item===it.id))await addDep(w.from,it.id,w.type);
+  if(errors.length)toast('Ignored: '+errors.join(', '));
+  renderView();if(panelItem===it.id)renderPanel();
+}
+function projSettings(){return (curBoard&&curBoard.settings)||{}}
+async function saveProjSettings(patch){curBoard.settings=Object.assign({},curBoard.settings||{},patch);await sb.from('boards').update({settings:curBoard.settings}).eq('id',curBoard.id)}
 
 async function addBoard(){
   const name=prompt('Board name:');if(!name)return;
@@ -380,8 +413,11 @@ function renderBoardNav(){
 /* ================= ITEM CRUD + ACTIVITY ================= */
 async function createItem(groupId,parentId,name,cv){
   const it={board_id:curBoard.id,group_id:groupId,parent_id:parentId,name,col_values:cv||{},position:items.length,created_by:myName};
+  // B2 — sequential immutable code (predecessor reference) for project boards
+  if(curBoard.template==='project')it.code=curBoard.code_seq||1;
   const {data,error}=await sb.from('items').insert(it).select().single();
   if(error)return toast(error.message);
+  if(curBoard.template==='project'){const nx=(curBoard.code_seq||1)+1;curBoard.code_seq=nx;sb.from('boards').update({code_seq:nx}).eq('id',curBoard.id)}
   items.push(data);
   logActivity(data.id,'created','', '');
   runAutomations('item_created',data);
@@ -452,6 +488,7 @@ async function deleteItem(id){
   const ids=[id,...kids];
   await sb.from('items').delete().in('id',ids);
   items=items.filter(x=>!ids.includes(x.id));
+  links=links.filter(l=>!ids.includes(l.from_item)&&!ids.includes(l.to_item)); // B2 (DB cascades; keep local in sync)
   renderView();
 }
 /* click = open details (delayed so dblclick can cancel); dblclick or ✎ = inline rename */
@@ -727,11 +764,11 @@ function renderProjectTable(){
       <h3 style="color:${g.color}" onclick="collapsed['${g.id}']=!collapsed['${g.id}'];renderView()">${isCol?'▸':'▾'} ${esc(g.name)}</h3>
       <button class="icon-btn" onclick="groupMenu(event,'${g.id}')">⋯</button></div>`;
     if(!isCol){
-      const tw=(W.name||360)+ic.reduce((t,c)=>t+(W[c.id]||140),0)+40;
-      html+=`<table class="gtable" style="table-layout:fixed;width:${tw}px"><tr><th style="width:${W.name||360}px;position:relative">Activity<span class="rz" onmousedown="rzStart(event,'name')"></span></th>${ic.map(c=>`<th style="width:${W[c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'${c.id}')"></span></th>`).join('')}<th style="width:40px"></th></tr>`;
+      const tw=(W.name||360)+ic.reduce((t,c)=>t+(W[c.id]||140),0)+84;
+      html+=`<table class="gtable" style="table-layout:fixed;width:${tw}px"><tr><th style="width:44px">ID</th><th style="width:${W.name||360}px;position:relative">Activity<span class="rz" onmousedown="rzStart(event,'name')"></span></th>${ic.map(c=>`<th style="width:${W[c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'${c.id}')"></span></th>`).join('')}<th style="width:40px"></th></tr>`;
       html+=projRows(g.id,null,0,ic);
-      html+=`<tr><td colspan="${ic.length+2}" class="addrow" onclick="promptAdd('${g.id}',null)">+ Add item</td></tr>`;
-      if(sums.length&&gi.length)html+=`<tr class="sumrow"><td></td>${ic.map(c=>{const s=sums.find(x=>x.c.id===c.id);return `<td>${s?fmtMoney(s.t):''}</td>`}).join('')}<td></td></tr>`;
+      html+=`<tr><td colspan="${ic.length+3}" class="addrow" onclick="promptAdd('${g.id}',null)">+ Add item</td></tr>`;
+      if(sums.length&&gi.length)html+=`<tr class="sumrow"><td></td><td></td>${ic.map(c=>{const s=sums.find(x=>x.c.id===c.id);return `<td>${s?fmtMoney(s.t):''}</td>`}).join('')}<td></td></tr>`;
       html+='</table>';
     }
     html+='</div>';
@@ -749,7 +786,7 @@ function projRows(groupId,parentId,depth,ic){
     const kids=subsOf(it.id);
     const open=!collapsed['x'+it.id];
     const pad=8+depth*20;
-    html+=`<tr class="item"><td><div class="iname" style="padding-left:${pad}px">
+    html+=`<tr class="item"><td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">${it.code!=null?it.code:''}</td><td><div class="iname" style="padding-left:${pad}px">
       <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
       <button class="exp" onclick="collapsed['x${it.id}']=!collapsed['x${it.id}'];renderView()">${kids.length?(open?'▾':'▸'):'·'}</button>
       <span class="nm" data-nm="${it.id}" onclick="nmClick(event,'${it.id}')" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
@@ -760,7 +797,7 @@ function projRows(groupId,parentId,depth,ic){
     <td><button class="icon-btn" onclick="projItemMenu(event,'${it.id}')">⋯</button></td></tr>`;
     if(kids.length&&open){
       html+=projRows(groupId,it.id,depth+1,ic);
-      html+=`<tr><td colspan="${ic.length+2}" class="addrow" style="padding-left:${pad+42}px" onclick="promptAdd('${groupId}','${it.id}')">+ Add sub-element</td></tr>`;
+      html+=`<tr><td></td><td colspan="${ic.length+2}" class="addrow" style="padding-left:${pad+42}px" onclick="promptAdd('${groupId}','${it.id}')">+ Add sub-element</td></tr>`;
     }
   }
   return html;
