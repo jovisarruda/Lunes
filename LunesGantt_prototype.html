@@ -159,6 +159,34 @@
   .menu .mhead{padding:6px 10px 2px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px}
   .menu button.danger{color:var(--danger)}
   .menu button.sel{background:var(--green-l)}
+  /* details panel */
+  #panel{position:fixed;top:0;right:0;width:min(470px,96vw);height:100vh;background:#fff;box-shadow:-8px 0 30px rgba(20,30,40,.16);z-index:88;display:flex;flex-direction:column}
+  #panelHead{display:flex;align-items:center;gap:10px;padding:14px 16px 12px;border-bottom:1px solid var(--line)}
+  #panelHead .pn{flex:1;min-width:0}
+  #panelHead .crumb{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #panelHead .pname{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 3px;border-radius:5px;cursor:text}
+  #panelHead .pname:focus{outline:2px solid var(--green)}
+  #panelHead .pgear,#panelHead .pclose{cursor:pointer;color:var(--muted);border:0;background:transparent;font-size:16px;padding:4px 6px;border-radius:6px}
+  #panelHead .pgear:hover,#panelHead .pclose:hover{background:var(--panel)}
+  .ptabs{display:flex;gap:2px;padding:8px 12px;border-bottom:1px solid var(--line)}
+  .ptabs button{border:0;background:transparent;padding:6px 12px;font:inherit;font-weight:600;color:var(--muted);cursor:pointer;border-radius:8px}
+  .ptabs button.on{background:var(--green-l);color:var(--green-d)}
+  #panelBody{flex:1;overflow:auto;padding:12px 16px}
+  .pfield{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line2)}
+  .pfield .k{width:92px;flex:0 0 92px;color:var(--muted);font-size:12px}
+  .pfield .v{flex:1;min-width:0}
+  .pfield input,.pfield select,.pfield textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:5px 7px;font:inherit;background:#fff}
+  .pfield .ro{color:var(--slate)}
+  .pill{display:inline-flex;align-items:center;padding:3px 11px;border-radius:12px;color:#fff;font-size:12px;font-weight:600}
+  .plink a{color:var(--green-d);font-weight:600}
+  .pmeta{color:var(--muted);font-size:11px;margin:2px 0 10px}
+  .comment{border:1px solid var(--line);border-radius:8px;padding:8px 10px;margin-top:9px}
+  .comment .meta{color:var(--muted);font-size:11px;margin-bottom:3px}
+  .logline{padding:8px 0;border-bottom:1px solid var(--line2);font-size:12.5px;color:var(--slate)}
+  .logline .t{font-size:11px;color:var(--muted2)}
+  .ce-row{display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line2)}
+  .ce-row .nm{flex:1}.ce-row .ty{color:var(--muted);font-size:11px;background:var(--line2);padding:2px 7px;border-radius:10px}
+  .ce-chip{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:11px;font-size:11.5px;margin:3px 4px 0 0}
 
   /* modal / popup */
   .scrim{position:fixed;inset:0;background:rgba(30,40,50,.28);z-index:90;display:flex;align-items:center;justify-content:center}
@@ -254,7 +282,8 @@ const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','De
 const uid=()=>Math.random().toString(36).slice(2,9);
 const fmtShort=s=>{const[,m,d]=s.split('-');return d+' '+MON[+m-1]};
 
-const STATUS={'To Do':'#c4c4c4','Working on it':'#fdab3d','Done':'#00c875','Stuck':'#e2445c'};
+let STATUS={'To Do':'#c4c4c4','Working on it':'#fdab3d','Done':'#00c875','Stuck':'#e2445c'};
+const STATUS_COLORS=['#c4c4c4','#fdab3d','#00c875','#e2445c','#579bfc','#a25ddc','#037f4c','#ff642e','#9aadbd'];
 const PALETTE=['#1f9d63','#3b82f6','#a855f7','#f0a63c','#e2445c','#0ea5a4','#8b5cf6','#d97706'];
 const colorHash=s=>{let h=0;for(const c of(s||''))h=(h*31+c.charCodeAt(0))>>>0;return PALETTE[h%PALETTE.length]};
 
@@ -294,6 +323,13 @@ let links=[
   {id:uid(),from:'t11',to:'t12',type:'FS'},
 ];
 const TYPE_PT={FS:'Término→Início (TI)',SS:'Início→Início (II)',FF:'Término→Término (TT)',SF:'Início→Término (IT)'};
+/* configurable board columns (like the list-view boards). native fields (start/finish/person/effort) shown separately in the panel */
+let columns=[
+  {id:'status',name:'Status',type:'status',native:true},
+  {id:'category',name:'Category',type:'label',native:true,options:{choices:['PM','Analysis','Design','Dev','QA']}},
+  {id:'link',name:'Link',type:'link',options:{}},
+  {id:'notes',name:'Notes',type:'text',options:{}},
+];
 
 let zoom='week', colorBy='none', critOn=false, currentView='gantt';
 const PX={day:30,week:10,month:4.4};
@@ -551,7 +587,7 @@ function placeMenu(m,x,y){document.body.appendChild(m);_menu=m;const mw=m.offset
 function openMenu(anchor,t){
   closeMenu();
   const par=byId(t.parent);const sibs=tasks.filter(x=>x.parent===t.parent);const canDemote=sibs.indexOf(t)>0;
-  const items=[['＋','Add element (same level)',()=>addSibling(t)],['↳','Add subelement',()=>addChild(t)],['⧉','Duplicate',()=>duplicate(t)],'sep',
+  const items=[['⊙','Details',()=>openDetails(t)],'sep',['＋','Add element (same level)',()=>addSibling(t)],['↳','Add subelement',()=>addChild(t)],['⧉','Duplicate',()=>duplicate(t)],'sep',
     ['←','Promote (up a level)',()=>promote(t),!par],['→','Demote (into item above)',()=>demote(t),!canDemote],'sep',
     ['↺','Recalculate dates',()=>recalc(t)],'sep',['🗑','Delete',()=>del(t),false,true]];
   const m=document.createElement('div');m.className='menu';
@@ -565,6 +601,101 @@ function openLinkMenu(e,L){
   const s=document.createElement('div');s.className='sep';m.appendChild(s);
   const del=document.createElement('button');del.className='danger';del.innerHTML='<span class="ic">🗑</span>Delete dependency';del.onclick=()=>{closeMenu();links=links.filter(x=>x.id!==L.id);render()};m.appendChild(del);
   placeMenu(m,e.clientX,e.clientY);
+}
+
+/* ============================================================ DETAILS PANEL + COLUMNS (like the list-view boards) */
+let panelId=null, panelTab='details';
+const escapeHtml=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const escAttr=s=>String(s).replace(/"/g,'&quot;');
+function getVal(t,col){if(col.id==='status')return t.status||'';if(col.id==='category')return t.cat||'';return (t.cv&&t.cv[col.id])??''}
+function setVal(t,col,val){const old=getVal(t,col);if(col.id==='status')t.status=val;else if(col.id==='category')t.cat=val;else t.cv={...(t.cv||{}),[col.id]:val};logAct(t,col.name,old,val);render();if(panelId===t.id)renderPanel()}
+function logAct(t,field,oldV,newV){(t.log=t.log||[]).unshift({who:'You',ts:Date.now(),field,old:oldV,new:newV})}
+function ancestorsOf(t){const out=[];let p=byId(t.parent);while(p){out.unshift(p.name);p=byId(p.parent)}return out}
+function ensurePeopleDL(){let dl=document.getElementById('peopleDL');if(!dl){dl=document.createElement('datalist');dl.id='peopleDL';document.body.appendChild(dl)}dl.innerHTML=peopleList.map(p=>`<option value="${escAttr(p)}">`).join('')}
+function openDetails(t){panelId=t.id;panelTab='details';renderPanelShell();renderPanel()}
+function closePanel(){document.getElementById('panel')?.remove();panelId=null}
+function renderPanelShell(){
+  document.getElementById('panel')?.remove();
+  const d=document.createElement('div');d.id='panel';
+  d.innerHTML=`<div id="panelHead"><div class="pn"><div class="crumb" id="pCrumb"></div><div class="pname" id="pName" title="Double-click to rename"></div></div><button class="pgear" id="pGear" title="Configure columns">⚙</button><button class="pclose" id="pClose" title="Close">✕</button></div>
+  <div class="ptabs"><button data-t="details">Details</button><button data-t="comments">Comments</button><button data-t="log">Activity log</button></div><div id="panelBody"></div>`;
+  document.body.appendChild(d);
+  d.querySelector('#pClose').onclick=closePanel;
+  d.querySelector('#pGear').onclick=openColumnsEditor;
+  d.querySelector('.ptabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b){panelTab=b.dataset.t;renderPanel()}});
+  const nm=d.querySelector('#pName');
+  nm.ondblclick=()=>{const t=byId(panelId);nm.contentEditable=true;nm.focus();const done=()=>{nm.contentEditable=false;const v=nm.textContent.trim();if(v&&v!==t.name){logAct(t,'name',t.name,v);t.name=v}render();renderPanel()};nm.onblur=done;nm.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();nm.blur()}}};
+}
+function field(k,v){return `<div class="pfield"><span class="k">${k}</span><span class="v">${v}</span></div>`}
+function valEditor(t,col){
+  const v=getVal(t,col);
+  if(col.type==='status'){return `<select data-col="${col.id}"><option value="">—</option>${Object.keys(STATUS).map(s=>`<option value="${escAttr(s)}"${s===v?' selected':''}>${s}</option>`).join('')}</select>`}
+  if(col.type==='label'){const ch=col.options&&col.options.choices||[];return `<select data-col="${col.id}"><option value="">—</option>${ch.map(c=>`<option value="${escAttr(c)}"${c===v?' selected':''}>${c}</option>`).join('')}</select>`}
+  if(col.type==='person')return `<input data-col="${col.id}" list="peopleDL" value="${escAttr(v)}">`;
+  if(col.type==='date')return `<input type="date" data-col="${col.id}" value="${v||''}">`;
+  if(col.type==='number')return `<input type="number" data-col="${col.id}" value="${escAttr(v)}">`;
+  if(col.type==='checkbox')return `<label style="color:var(--slate)"><input type="checkbox" data-col="${col.id}" ${v?'checked':''} style="width:auto"></label>`;
+  if(col.type==='link'){const link=v?`<div class="plink" style="margin-top:4px"><a href="${escAttr(v)}" target="_blank" rel="noopener">↗ open link</a></div>`:'';return `<input data-col="${col.id}" placeholder="https://…" value="${escAttr(v)}">${link}`}
+  return `<input data-col="${col.id}" value="${escAttr(v)}">`;
+}
+function renderPanel(){
+  const t=byId(panelId);if(!t)return closePanel();
+  document.querySelectorAll('#panel .ptabs button').forEach(b=>b.classList.toggle('on',b.dataset.t===panelTab));
+  const anc=ancestorsOf(t);document.getElementById('pCrumb').textContent=anc.length?anc.join(' / '):'Top level';
+  document.getElementById('pName').textContent=t.name;
+  const body=document.getElementById('panelBody');const leaf=isLeaf(t);
+  if(panelTab==='comments'){
+    const cs=t.comments||[];
+    body.innerHTML=`<textarea id="cmtBox" placeholder="Write a comment…" style="width:100%;min-height:64px;border:1px solid var(--line);border-radius:8px;padding:7px;font:inherit"></textarea>
+      <div style="margin:8px 0"><button class="btn" id="cmtBtn" style="background:var(--green);border-color:var(--green);color:#fff">Comment</button></div>
+      ${cs.map(c=>`<div class="comment"><div class="meta">${c.author} · ${new Date(c.ts).toLocaleString()}</div>${escapeHtml(c.body)}</div>`).join('')||'<p class="pmeta">No comments yet.</p>'}`;
+    body.querySelector('#cmtBtn').onclick=()=>{const v=body.querySelector('#cmtBox').value.trim();if(!v)return;(t.comments=t.comments||[]).unshift({author:'You',ts:Date.now(),body:v});renderPanel()};
+    return;
+  }
+  if(panelTab==='log'){
+    const ls=t.log||[];
+    body.innerHTML=ls.map(l=>{const what=l.field==='created'?'created this item':`changed <b>${escapeHtml(l.field)}</b>${l.old?` from “${escapeHtml(String(l.old))}”`:''} to “${escapeHtml(String(l.new))}”`;return `<div class="logline">${l.who} ${what}<div class="t">${new Date(l.ts).toLocaleString()}</div></div>`}).join('')||'<p class="pmeta">No activity yet.</p>';
+    return;
+  }
+  const sVal=leaf?t.start:effStart(t), eVal=leaf?(t.milestone?t.start:t.end):effEnd(t);
+  const editableDates=leaf||t.manualDates;
+  let h=field('Person', leaf?`<input id="f-person" list="peopleDL" value="${escAttr(t.person||'')}">`:`<span class="ro">— (rolls up)</span>`);
+  h+=field('Start', editableDates?`<input type="date" id="f-start" value="${sVal||''}">`:`<span class="ro">${sVal?fmtShort(sVal):'—'}</span>`);
+  h+=field('Finish', (editableDates&&!t.milestone)?`<input type="date" id="f-end" value="${eVal||''}">`:`<span class="ro">${t.milestone?'◆ milestone':(eVal?fmtShort(eVal):'—')}</span>`);
+  h+=field('Effort', leaf?`<input type="number" min="0" id="f-eff" value="${t.eff||0}">`:`<span class="ro">—</span>`);
+  if(leaf)h+=field('Milestone', `<label style="color:var(--slate)"><input type="checkbox" id="f-ms" ${t.milestone?'checked':''} style="width:auto;margin-right:6px">0-day milestone</label>`);
+  for(const col of columns)h+=field(col.name, valEditor(t,col));
+  body.innerHTML=`<p class="pmeta">${leaf?'Leaf task':'Summary'} · ${subtreeIds(t.id).length-1} sub-item(s)</p>`+h;
+  if(leaf){
+    const P=body.querySelector('#f-person');if(P)P.onchange=()=>{const old=t.person,v=P.value.trim();t.person=v;if(v&&!peopleList.includes(v))peopleList.push(v);logAct(t,'Person',old,v);render();renderPanel()};
+    const S=body.querySelector('#f-start');if(S)S.onchange=()=>{if(S.value&&S.value!==t.start)onStartEdited(t,S.value)};
+    const E=body.querySelector('#f-end');if(E)E.onchange=()=>{if(E.value&&E.value!==t.end)onEndEdited(t,E.value)};
+    const EF=body.querySelector('#f-eff');if(EF)EF.onchange=()=>onEffortEdited(t,Math.max(0,+EF.value||0));
+    const MS=body.querySelector('#f-ms');if(MS)MS.onchange=()=>{t.milestone=MS.checked;if(MS.checked)t.end=t.start;logAct(t,'Milestone','',MS.checked);render();renderPanel()};
+  }
+  for(const col of columns){const el=body.querySelector(`[data-col="${col.id}"]`);if(el)el.onchange=()=>setVal(t,col,col.type==='checkbox'?el.checked:el.value)}
+  ensurePeopleDL();
+}
+function openColumnsEditor(){
+  const scrim=document.createElement('div');scrim.className='scrim';const m=document.createElement('div');m.className='modal';m.style.width='min(580px,94vw)';
+  const rows=columns.map(col=>{let extra='';
+    if(col.type==='status')extra=`<div style="margin-top:5px">${Object.keys(STATUS).map(s=>`<span class="ce-chip" style="background:${STATUS[s]}22;color:${STATUS[s]}">${s} <button data-dellabel="${escAttr(s)}" style="border:0;background:transparent;cursor:pointer;color:inherit">✕</button></span>`).join('')}<button class="btn" data-addlabel="1" style="padding:2px 8px">+ label</button></div>`;
+    if(col.type==='label')extra=`<div style="margin-top:5px">${(col.options&&col.options.choices||[]).map((c,i)=>`<span class="ce-chip" style="background:var(--line2)">${c} <button data-delchoice="${col.id}|${i}" style="border:0;background:transparent;cursor:pointer">✕</button></span>`).join('')}<button class="btn" data-addchoice="${col.id}" style="padding:2px 8px">+ choice</button></div>`;
+    return `<div class="ce-row"><span class="nm"><b>${col.name}</b> <span class="ty">${col.type}</span>${col.native?' <span class="ty">native</span>':''}${extra}</span><span style="white-space:nowrap"><button class="btn" data-ren="${col.id}" style="padding:2px 8px">✎</button>${col.id==='status'?'':`<button class="btn" data-del="${col.id}" style="padding:2px 8px;color:var(--danger)">🗑</button>`}</span></div>`}).join('');
+  m.innerHTML=`<h3>Columns — Project board</h3><div class="sub">Fields shown in every item's Details. Native gantt fields (Start, Finish, Person, Effort) are always present.</div>
+    <div class="body">${rows}<div class="ce-row" style="border:0;gap:8px"><input id="nc-name" placeholder="New column name" style="flex:1;border:1px solid var(--line);border-radius:6px;padding:6px 8px;font:inherit"><select id="nc-type" style="border:1px solid var(--line);border-radius:6px;padding:6px;font:inherit"><option>text</option><option>number</option><option>date</option><option>status</option><option>person</option><option>label</option><option>link</option><option>checkbox</option></select><button class="btn" id="nc-add" style="background:var(--green);border-color:var(--green);color:#fff">Add</button></div></div>
+    <div class="foot"><button class="btn" data-a="close" style="background:var(--green);border-color:var(--green);color:#fff">Done</button></div>`;
+  scrim.appendChild(m);document.body.appendChild(scrim);
+  const reopen=()=>{scrim.remove();openColumnsEditor()};
+  const finish=()=>{scrim.remove();if(panelId)renderPanel();render()};
+  m.querySelector('[data-a="close"]').onclick=finish;scrim.addEventListener('mousedown',e=>{if(e.target===scrim)finish()});
+  m.querySelector('#nc-add').onclick=()=>{const n=m.querySelector('#nc-name').value.trim();if(!n)return;const ty=m.querySelector('#nc-type').value;const col={id:'c'+uid(),name:n,type:ty,options:{}};if(ty==='label')col.options.choices=[];columns.push(col);reopen()};
+  m.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{columns=columns.filter(c=>c.id!==b.dataset.del);reopen()});
+  m.querySelectorAll('[data-ren]').forEach(b=>b.onclick=()=>{const c=columns.find(x=>x.id===b.dataset.ren);const n=prompt('Column name:',c.name);if(n&&n.trim()){c.name=n.trim();reopen()}});
+  const al=m.querySelector('[data-addlabel]');if(al)al.onclick=()=>{const n=prompt('Status label name:');if(n&&n.trim()){STATUS[n.trim()]=STATUS_COLORS[Object.keys(STATUS).length%STATUS_COLORS.length];reopen()}};
+  m.querySelectorAll('[data-dellabel]').forEach(b=>b.onclick=()=>{if(Object.keys(STATUS).length>1){delete STATUS[b.dataset.dellabel];reopen()}});
+  m.querySelectorAll('[data-addchoice]').forEach(b=>b.onclick=()=>{const c=columns.find(x=>x.id===b.dataset.addchoice);const n=prompt('Choice:');if(n&&n.trim()){(c.options.choices=c.options.choices||[]).push(n.trim());reopen()}});
+  m.querySelectorAll('[data-delchoice]').forEach(b=>b.onclick=()=>{const[id,i]=b.dataset.delchoice.split('|');const c=columns.find(x=>x.id===id);c.options.choices.splice(+i,1);reopen()});
 }
 
 function newLeaf(parent,after){const s=after&&(after.end||after.start)?addD(after.milestone?after.start:after.end,1):(rangeStart?addD(rangeStart,4):'2026-08-03');return{id:uid(),parent,name:'New task',start:s,end:addD(s,3),eff:8,effU:'h',person:'',status:'To Do',cat:''}}
