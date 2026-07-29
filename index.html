@@ -158,6 +158,48 @@ tr.ghost .nm{font-style:italic}
 .aimsg.typing{opacity:.6;font-style:italic}
 #aiFoot{padding:10px;border-top:1px solid var(--border);display:flex;gap:6px;align-items:flex-end}
 #aiInput{flex:1;resize:none;height:40px;max-height:110px;font-size:13px}
+/* ===== B4 — LunesGantt (Gantt + Workload) ===== */
+.gwrap{display:flex;flex-direction:column;height:calc(100vh - 120px)}
+.gtool{display:flex;align-items:center;gap:10px;padding:6px 2px;flex-wrap:wrap}
+.gseg{display:inline-flex;border:1px solid var(--border);border-radius:8px;overflow:hidden}
+.gseg button{border:0;background:#fff;padding:5px 11px;font:inherit;cursor:pointer;color:var(--muted)}
+.gseg button.on{background:var(--accent,#00854d);color:#fff}
+.gboard{flex:1;overflow:auto;border:1px solid var(--border);border-radius:10px;position:relative;background:#fff}
+.ghead{position:sticky;top:0;z-index:6;display:flex;height:46px;background:#fff;border-bottom:1px solid var(--border)}
+.gcorner{position:sticky;left:0;z-index:7;width:var(--gtw,460px);flex:0 0 var(--gtw,460px);background:#fff;border-right:1px solid var(--border);display:flex;align-items:flex-end}
+.gcorner .gc{display:flex;width:100%;padding:0 8px 6px;gap:8px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+.gth{position:relative;flex:0 0 auto;height:46px}
+.gtt{position:absolute;top:0;height:22px;display:flex;align-items:center;padding-left:6px;font-size:11px;color:#555;font-weight:600;border-left:1px solid var(--border);white-space:nowrap;overflow:hidden}
+.gtb{position:absolute;top:22px;height:24px;display:flex;align-items:center;justify-content:center;font-size:10px;color:var(--muted);border-left:1px solid #eef1f3}
+.gtb.wk{background:#f4f6f8}
+.grow{display:flex;height:32px;position:relative}
+.grow:hover .gtc{background:#f7f9fa}
+.gtc{position:sticky;left:0;z-index:5;width:var(--gtw,460px);flex:0 0 var(--gtw,460px);background:#fff;border-right:1px solid var(--border);border-bottom:1px solid #eef1f3;display:flex;align-items:center;gap:4px;padding:0 8px;overflow:hidden}
+.gtc .gid{width:34px;flex:0 0 34px;text-align:right;color:#9aa;font-size:11px;font-variant-numeric:tabular-nums}
+.gtc .gcar{width:16px;flex:0 0 16px;text-align:center;cursor:pointer;color:#aab}
+.gtc .gnm{flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gtc .gpr{width:70px;flex:0 0 70px;color:#667;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.gtc.lv0 .gnm{font-weight:700}.gtc.lv1 .gnm{font-weight:600}
+.gtrack{position:relative;flex:0 0 auto;border-bottom:1px solid #eef1f3}
+.gcol{position:absolute;top:0;bottom:0;border-left:1px solid #eef1f3}.gcol.mo{border-left:1px solid var(--border)}.gcol.wk{border:0;background:rgba(140,150,160,.05)}
+.gbar{position:absolute;height:17px;top:7px;border-radius:5px;background:var(--accent,#00854d);cursor:grab;box-shadow:0 1px 2px rgba(0,0,0,.12);z-index:2;display:flex;align-items:center}
+.gbar .gh{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize}.gbar .gh.l{left:-1px}.gbar .gh.r{right:-1px}
+.gsum{height:8px;top:12px;background:#7c858e;border-radius:2px;box-shadow:none;cursor:default}
+.gsum::before,.gsum::after{content:"";position:absolute;top:100%;border-top:5px solid #7c858e;width:0;height:0}.gsum::before{left:0;border-right:5px solid transparent}.gsum::after{right:0;border-left:5px solid transparent}
+.gms{position:absolute;width:13px;height:13px;top:9px;background:#5b6570;transform:rotate(45deg);border-radius:2px;cursor:grab;z-index:2;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+.glab{position:absolute;left:calc(100% + 16px);white-space:nowrap;color:var(--muted);font-size:11px;pointer-events:none}
+.gdot{position:absolute;width:10px;height:10px;border-radius:50%;background:#fff;border:2px solid var(--accent,#00854d);top:11px;cursor:crosshair;opacity:0;z-index:4}
+.grow:hover .gdot{opacity:.85}
+.gov{position:absolute;top:0;left:0;pointer-events:none;z-index:3}
+.gov path.dep{fill:none;stroke:#5b6570;stroke-width:1.5;pointer-events:stroke;cursor:pointer}.gov path.dep:hover{stroke:var(--accent,#00854d);stroke-width:2.2}
+.gvl{stroke-dasharray:4 3;stroke-width:2}
+table.wlt{border-collapse:collapse;font-size:12.5px;margin-top:8px}
+table.wlt th,table.wlt td{border:1px solid var(--border);padding:6px 10px;text-align:center;white-space:nowrap}
+table.wlt th{background:#f7f9fa;color:#556}
+table.wlt td.pn,table.wlt th:first-child{text-align:left;font-weight:600;position:sticky;left:0;background:#fff}
+table.wlt th:first-child{background:#f7f9fa}
+table.wlt td.over{background:#fdecef;color:#b02a3c;font-weight:600}
+#gtip{position:fixed;z-index:50;background:#2b3033;color:#fff;padding:3px 7px;border-radius:5px;font-size:11px;pointer-events:none;display:none}
 </style>
 </head>
 <body>
@@ -192,6 +234,8 @@ tr.ghost .nm{font-style:italic}
         <button id="tab-table" class="active" onclick="setView('table')">Table</button>
         <button id="tab-kanban" onclick="setView('kanban')">Kanban</button>
         <button id="tab-calendar" onclick="setView('calendar')">Calendar</button>
+        <button id="tab-gantt" onclick="setView('gantt')" style="display:none">Gantt</button>
+        <button id="tab-workload" onclick="setView('workload')" style="display:none">Workload</button>
         <button id="tab-aiinput" onclick="setView('aiinput')">✨ AI Input<span id="aiCount"></span></button>
       </div>
       <div id="topRight">
@@ -597,10 +641,17 @@ function forceItemTotal(e,itemId,colId){
 }
 
 /* ================= VIEWS ================= */
-function setView(v){view=v;['table','kanban','calendar','aiinput'].forEach(x=>$('tab-'+x).classList.toggle('active',x===v));renderView()}
+function setView(v){view=v;renderView()}
 function renderView(){
   if(!curBoard)return;
   updateAiCount();
+  const proj=isProjectBoard();
+  $('tab-gantt').style.display=proj?'':'none';
+  $('tab-workload').style.display=proj?'':'none';
+  if(!proj&&(view==='gantt'||view==='workload'))view='table';
+  ['table','kanban','calendar','aiinput','gantt','workload'].forEach(x=>{const b=$('tab-'+x);if(b)b.classList.toggle('active',x===view)});
+  if(view==='gantt')return G.renderGantt();      // B4
+  if(view==='workload')return G.renderWorkload(); // B4
   if(view==='table')renderTable();
   else if(view==='kanban')renderKanban();
   else if(view==='aiinput')renderAIInput();
@@ -1715,6 +1766,101 @@ async function openNotif(n){
   if(items.find(x=>x.id===n.item_id))openPanel(n.item_id);
   else toast('Item not found (deleted or archived)');
 }
+
+/* ============================================================
+   B4 — LunesGantt views (Gantt + Workload) for project boards.
+   Reads items/links/boards.settings; writes dates to col_values,
+   dependencies to the links table, settings to boards.settings.
+   ============================================================ */
+window.G=(function(){
+const DAY=86400000,ROWH=32,TREEW=460;
+const PX={day:26,week:8.5,month:3.8};
+const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const STATUS={'To Do':'#c4c4c4','Working on it':'#fdab3d','Done':'#00c875','Stuck':'#e2445c'};
+const PAL=['#1f9d63','#3b82f6','#a855f7','#f0a63c','#e2445c','#0ea5a4','#8b5cf6','#d97706'];
+const chash=s=>{let h=0;for(const c of(s||''))h=(h*31+c.charCodeAt(0))>>>0;return PAL[h%PAL.length]};
+const pd=s=>{const[y,m,d]=s.split('-').map(Number);return Date.UTC(y,m-1,d)};
+const fd=t=>new Date(t).toISOString().slice(0,10);
+const addD=(s,n)=>fd(pd(s)+n*DAY);
+const diffD=(a,b)=>Math.round((pd(b)-pd(a))/DAY);
+const fmtS=s=>{const[,m,d]=s.split('-');return(+d)+' '+MON[+m-1]};
+let T=[],C={},rangeStart,rangeEnd,totalDays,totalW,rowIndex={},rowsEl=null,ld=null;
+function S(){return Object.assign({zoom:'week',colorBy:'status',kickoff:null,deadline:null,hoursPerDay:8,daysPerWeek:5,countWeekends:false,showWeekends:true,dedication:{}},(curBoard&&curBoard.settings)||{})}
+function saveS(p){return saveProjSettings(p)}
+function gcols(){const ic=itemCols(),dt=ic.filter(c=>c.type==='date');return{start:ic.find(c=>/start|in[ií]cio/i.test(c.name))||dt[0],finish:ic.find(c=>/finish|end|t[ée]rmino/i.test(c.name))||dt[1]||dt[0],effort:ic.find(c=>/effort|esfor/i.test(c.name))||ic.find(c=>c.type==='number'),person:ic.find(c=>c.type==='person'),status:ic.find(c=>c.type==='status')}}
+const gv=(it,c)=>c&&it.col_values?(it.col_values[c.id]||null):null;
+function build(){C=gcols();T=items.filter(x=>!isPending(x)).map(it=>({id:it.id,parent:it.parent_id,name:it.name,code:it.code,start:gv(it,C.start),end:gv(it,C.finish),milestone:!!(it.col_values&&it.col_values._milestone),eff:+gv(it,C.effort)||0,person:gv(it,C.person)||'',status:gv(it,C.status)||''}))}
+const tid=id=>T.find(t=>t.id===id);
+const isLeaf=t=>!T.some(x=>x.parent===t.id);
+function depth(t){let d=0,p=t.parent;while(p){d++;p=(tid(p)||{}).parent}return d}
+function leaves(id){const t=tid(id);if(t&&isLeaf(t))return[t];const o=[];(function r(p){for(const c of T.filter(x=>x.parent===p))isLeaf(c)?o.push(c):r(c.id)})(id);return o}
+function eS(t){if(isLeaf(t))return t.start;const l=leaves(t.id).filter(x=>x.start);return l.length?l.reduce((a,b)=>pd(b.start)<pd(a)?b.start:a,l[0].start):null}
+function eE(t){if(isLeaf(t))return t.milestone?t.start:t.end;const l=leaves(t.id).filter(x=>x.start);return l.length?l.reduce((a,b)=>{const e=b.milestone?b.start:b.end;return e&&pd(e)>pd(a)?e:a},'0000-01-01'):null}
+function vis(){const o=[];(function r(p){for(const t of T.filter(x=>x.parent===p)){o.push(t);if(!isLeaf(t)&&!collapsed['g'+t.id])r(t.id)}})(null);return o}
+function range(){const st=S();let mn=null,mx=null;for(const t of T){if(!isLeaf(t))continue;const s=t.start,e=t.milestone?t.start:t.end;if(!s)continue;if(!mn||pd(s)<pd(mn))mn=s;if(!mx||pd(e||s)>pd(mx))mx=e||s}if(st.kickoff&&(!mn||pd(st.kickoff)<pd(mn)))mn=st.kickoff;if(st.deadline&&(!mx||pd(st.deadline)>pd(mx)))mx=st.deadline;mn=mn||fd(Date.now());mx=mx||addD(mn,30);let a=new Date(pd(mn));a=new Date(Date.UTC(a.getUTCFullYear(),a.getUTCMonth(),1));let b=new Date(pd(mx));b=new Date(Date.UTC(b.getUTCFullYear(),b.getUTCMonth()+1,0));rangeStart=fd(a.getTime());rangeEnd=fd(b.getTime());totalDays=diffD(rangeStart,rangeEnd)+1;totalW=Math.ceil(totalDays*PX[st.zoom])}
+const xOf=s=>diffD(rangeStart,s)*PX[S().zoom];
+const dFromX=px=>Math.round(px/PX[S().zoom]);
+function color(t){const st=S();if(st.colorBy==='status')return STATUS[t.status]||'#c4c4c4';if(st.colorBy==='person')return chash(t.person);return(getComputedStyle(document.documentElement).getPropertyValue('--accent')||'#00854d').trim()}
+function grid(){const st=S(),px=PX[st.zoom];let h='';if(st.zoom==='day'){for(let i=0;i<totalDays;i++){const ds=addD(rangeStart,i),wd=new Date(pd(ds)).getUTCDay(),wk=st.showWeekends&&(wd===0||wd===6),f=new Date(pd(ds)).getUTCDate()===1;h+=`<div class="gcol${wk?' wk':''}${f?' mo':''}" style="left:${i*px}px${wk?';width:'+px+'px':''}"></div>`}}else if(st.zoom==='week'){for(let i=0;i<totalDays;i+=7)h+=`<div class="gcol" style="left:${i*px}px"></div>`;let d=new Date(pd(rangeStart));while(d.getTime()<=pd(rangeEnd)){const ms=fd(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1));if(pd(ms)>=pd(rangeStart))h+=`<div class="gcol mo" style="left:${xOf(ms)}px"></div>`;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))}}else{let d=new Date(pd(rangeStart));while(d.getTime()<=pd(rangeEnd)){const ms=fd(Date.UTC(d.getUTCFullYear(),d.getUTCMonth(),1));h+=`<div class="gcol mo" style="left:${xOf(ms<rangeStart?rangeStart:ms)}px"></div>`;d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))}}return h}
+function header(th){const st=S(),px=PX[st.zoom],top=[],bot=[];let d=new Date(pd(rangeStart));while(d.getTime()<=pd(rangeEnd)){const y=d.getUTCFullYear(),m=d.getUTCMonth(),ms=fd(Date.UTC(y,m,1)),me=fd(Date.UTC(y,m+1,0)),sx=xOf(ms<rangeStart?rangeStart:ms),ex=xOf(me>rangeEnd?rangeEnd:me)+px;top.push({x:sx,w:ex-sx,txt:MON[m]+' '+y});d=new Date(Date.UTC(y,m+1,1))}
+ if(st.zoom==='day'){for(let i=0;i<totalDays;i++){const ds=addD(rangeStart,i),wd=new Date(pd(ds)).getUTCDay();bot.push({x:i*px,w:px,txt:new Date(pd(ds)).getUTCDate(),wk:st.showWeekends&&(wd===0||wd===6)})}}else if(st.zoom==='week'){for(let i=0;i<totalDays;i+=7)bot.push({x:i*px,w:7*px,txt:fmtS(addD(rangeStart,i))})}else{let dd=new Date(pd(rangeStart));while(dd.getTime()<=pd(rangeEnd)){const y=dd.getUTCFullYear(),m=dd.getUTCMonth(),ms=fd(Date.UTC(y,m,1)),me=fd(Date.UTC(y,m+1,0));bot.push({x:xOf(ms<rangeStart?rangeStart:ms),w:(diffD(ms<rangeStart?rangeStart:ms,me>rangeEnd?rangeEnd:me)+1)*px,txt:MON[m]});dd=new Date(Date.UTC(y,m+1,1))}}
+ th.innerHTML='';th.style.width=totalW+'px';const T1=document.createElement('div');T1.style.cssText='position:absolute;top:0;height:22px;left:0;right:0';const B1=document.createElement('div');B1.style.cssText='position:absolute;top:22px;height:24px;left:0;right:0';for(const t of top){const e=document.createElement('div');e.className='gtt';e.style.left=t.x+'px';e.style.width=t.w+'px';e.textContent=t.txt;T1.appendChild(e)}for(const b of bot){const e=document.createElement('div');e.className='gtb'+(b.wk?' wk':'');e.style.left=b.x+'px';e.style.width=b.w+'px';e.textContent=b.txt;B1.appendChild(e)}th.appendChild(T1);th.appendChild(B1)}
+function edgeX(t){const px=PX[S().zoom];if(t.milestone){const c=xOf(t.start)+px/2;return{s:TREEW+c,f:TREEW+c}}const s=eS(t),e=eE(t);return{s:TREEW+xOf(s),f:TREEW+xOf(e)+px}}
+function elbow(x1,y1,d1,x2,y2,d2){const s=10,sx=x1+d1*s,tx=x2+d2*s;return`M ${x1} ${y1} L ${sx} ${y1} L ${sx} ${y2} L ${tx} ${y2} L ${x2} ${y2}`}
+const tip=t=>{const e=document.getElementById('gtip');if(!e)return;if(!t){e.style.display='none';return}e.style.display='block';e.textContent=t};
+async function commit(id,start,end){const it=items.find(x=>x.id===id);if(!it)return;const cv=Object.assign({},it.col_values);if(C.start)cv[C.start.id]=start;if(C.finish)cv[C.finish.id]=end;it.col_values=cv;await sb.from('items').update({col_values:cv}).eq('id',id);renderGantt()}
+async function toggleMs(id){const it=items.find(x=>x.id===id);if(!it)return;const cv=Object.assign({},it.col_values);cv._milestone=!cv._milestone;if(cv._milestone&&C.start&&C.finish)cv[C.finish.id]=cv[C.start.id];it.col_values=cv;await sb.from('items').update({col_values:cv}).eq('id',id);renderGantt()}
+function dragBar(bar,t){bar.addEventListener('mousedown',e=>{if(e.target.classList.contains('gh'))return resize(e,bar,t,e.target.classList.contains('l')?'l':'r');e.preventDefault();e.stopPropagation();const x0=e.clientX,s0=t.start,e0=t.end;let ns=s0,ne=e0;const mv=ev=>{const dd=dFromX(ev.clientX-x0);ns=addD(s0,dd);ne=addD(e0,dd);bar.style.left=xOf(ns)+'px';tip(fmtS(ns)+' → '+fmtS(ne))};const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);tip(null);if(ns!==s0)commit(t.id,ns,ne)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)});bar.addEventListener('dblclick',e=>{e.stopPropagation();toggleMs(t.id)})}
+function resize(e,bar,t,side){e.preventDefault();e.stopPropagation();const px=PX[S().zoom],x0=e.clientX,s0=t.start,e0=t.end;let ns=s0,ne=e0;const mv=ev=>{const dd=dFromX(ev.clientX-x0);if(side==='l'){ns=addD(s0,dd);if(pd(ns)>pd(e0))ns=e0;bar.style.left=xOf(ns)+'px';bar.style.width=Math.max(px*0.6,(diffD(ns,e0)+1)*px)+'px';tip('start '+fmtS(ns))}else{ne=addD(e0,dd);if(pd(ne)<pd(s0))ne=s0;bar.style.width=Math.max(px*0.6,(diffD(s0,ne)+1)*px)+'px';tip('end '+fmtS(ne))}};const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);tip(null);if(ns!==s0||ne!==e0)commit(t.id,ns,ne)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)}
+function dragMs(ms,t){ms.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const x0=e.clientX,s0=t.start;let ns=s0;const mv=ev=>{ns=addD(s0,dFromX(ev.clientX-x0));ms.style.left=(xOf(ns)+PX[S().zoom]/2-6.5)+'px';tip(fmtS(ns))};const up=()=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);tip(null);if(ns!==s0)commit(t.id,ns,ns)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)});ms.addEventListener('dblclick',e=>{e.stopPropagation();toggleMs(t.id)})}
+function startLink(dot,t){dot.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const rect=rowsEl.getBoundingClientRect();const ex=edgeX(t),x1=dot.dataset.side==='f'?ex.f:ex.s,y1=rowIndex[t.id]*ROWH+ROWH/2;ld={from:t.id,side:dot.dataset.side};const tmp=document.getElementById('gtmp');const mv=ev=>{tmp.setAttribute('d',`M ${x1} ${y1} L ${ev.clientX-rect.left} ${ev.clientY-rect.top}`)};const up=async ev=>{document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);tmp.setAttribute('d','');const el=document.elementFromPoint(ev.clientX,ev.clientY);const row=el&&el.closest('.grow');const bar=row&&row.querySelector('.gbar,.gms');ld=null;if(!bar)return;const to=bar.dataset.id;if(to===t.id)return;const r=bar.getBoundingClientRect();const tside=(ev.clientX<r.left+r.width/2)?'s':'f';const type=(dot.dataset.side==='f'?'F':'S')+(tside==='s'?'S':'F');await addDep(t.id,to,type);if(topoOK()){renderGantt();toast('Linked '+type)}else{const l=links.find(x=>x.from_item===t.id&&x.to_item===to);if(l)await removeDep(l.id);toast('Would create a cycle — cancelled');renderGantt()}};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)})}
+function topoOK(){const ids=T.map(t=>t.id),set=new Set(ids),indeg={},adj={};ids.forEach(n=>{indeg[n]=0;adj[n]=[]});for(const L of links){if(!set.has(L.from_item)||!set.has(L.to_item))continue;adj[L.from_item].push(L.to_item);indeg[L.to_item]++}const q=ids.filter(n=>!indeg[n]);let c=0;while(q.length){const n=q.shift();c++;for(const m of adj[n])if(--indeg[m]===0)q.push(m)}return c===ids.length}
+function linkMenu(e,lid){menu(e,[['FS · Término→Início',()=>setDepType(lid,'FS').then(renderGantt)],['SS · Início→Início',()=>setDepType(lid,'SS').then(renderGantt)],['FF · Término→Término',()=>setDepType(lid,'FF').then(renderGantt)],['SF · Início→Término',()=>setDepType(lid,'SF').then(renderGantt)],['!Delete dependency',()=>removeDep(lid).then(renderGantt)]])}
+function renderGantt(){
+ build();range();const st=S(),px=PX[st.zoom],V=vis();rowIndex={};V.forEach((t,i)=>rowIndex[t.id]=i);
+ const wrap=document.createElement('div');wrap.className='gwrap';
+ const tool=document.createElement('div');tool.className='gtool';tool.innerHTML=`<span class="small" style="color:var(--muted)">ZOOM</span><div class="gseg" id="gzoom"><button data-z="day"${st.zoom==='day'?' class=on':''}>Day</button><button data-z="week"${st.zoom==='week'?' class=on':''}>Week</button><button data-z="month"${st.zoom==='month'?' class=on':''}>Month</button></div><span class="small" style="color:var(--muted)">COLOR</span><select id="gcolor" class="btn sm ghost"><option value="status"${st.colorBy==='status'?' selected':''}>Status</option><option value="person"${st.colorBy==='person'?' selected':''}>Person</option><option value="none"${st.colorBy==='none'?' selected':''}>Default</option></select><button class="btn sm ghost" id="gset">⚙ Project</button><span class="small" style="color:#9aa">drag bar = move · drag ○ = link · dbl-click bar = milestone</span>`;wrap.appendChild(tool);
+ const board=document.createElement('div');board.className='gboard';const inner=document.createElement('div');inner.style.position='relative';
+ const head=document.createElement('div');head.className='ghead';const corner=document.createElement('div');corner.className='gcorner';corner.innerHTML='<div class="gc"><div style="width:34px;flex:0 0 34px;text-align:right">ID</div><div style="flex:1;padding-left:20px">Activity</div><div style="width:70px;flex:0 0 70px">Person</div></div>';const th=document.createElement('div');th.className='gth';head.appendChild(corner);head.appendChild(th);header(th);
+ const rows=document.createElement('div');rows.style.position='relative';rowsEl=rows;
+ for(const t of V){const leaf=isLeaf(t),lv=Math.min(depth(t),2);const row=document.createElement('div');row.className='grow';row.dataset.id=t.id;
+  const tc=document.createElement('div');tc.className='gtc lv'+lv;tc.innerHTML=`<div class="gid">${t.code!=null?t.code:''}</div><div class="gcar" data-car="${t.id}" style="visibility:${leaf?'hidden':'visible'};margin-left:${depth(t)*14}px">${collapsed['g'+t.id]?'▸':'▾'}</div><div class="gnm" title="${esc(t.name)}">${esc(t.name)}</div><div class="gpr">${esc(t.person||'')}</div>`;
+  const tk=document.createElement('div');tk.className='gtrack';tk.style.width=totalW+'px';tk.innerHTML=grid();
+  if(t.milestone&&t.start){const cx=xOf(t.start)+px/2;const ms=document.createElement('div');ms.className='gms';ms.dataset.id=t.id;ms.style.left=(cx-6.5)+'px';dragMs(ms,t);tk.appendChild(ms);const lab=document.createElement('div');lab.className='glab';lab.style.left=(cx+12)+'px';lab.style.top='9px';lab.textContent=fmtS(t.start);tk.appendChild(lab)}
+  else{const s=leaf?t.start:eS(t),e=leaf?t.end:eE(t);if(s&&e){const left=xOf(s),w=Math.max(px*0.6,(diffD(s,e)+1)*px);const bar=document.createElement('div');bar.className=leaf?'gbar':'gbar gsum';bar.dataset.id=t.id;bar.style.left=left+'px';bar.style.width=w+'px';if(leaf){bar.style.background=color(t);bar.innerHTML='<div class="gh l"></div><div class="gh r"></div>';const lab=document.createElement('div');lab.className='glab';lab.textContent=t.person||'';bar.appendChild(lab);dragBar(bar,t)}tk.appendChild(bar);if(leaf){[['s',left],['f',left+w]].forEach(([side,x])=>{const d=document.createElement('div');d.className='gdot';d.dataset.id=t.id;d.dataset.side=side;d.style.left=(x-5)+'px';startLink(d,t);tk.appendChild(d)})}}}
+  row.appendChild(tc);row.appendChild(tk);rows.appendChild(row)}
+ const NS='http://www.w3.org/2000/svg';const svg=document.createElementNS(NS,'svg');svg.setAttribute('class','gov');const H=V.length*ROWH;svg.setAttribute('width',TREEW+totalW);svg.setAttribute('height',H+ROWH);const defs=document.createElementNS(NS,'defs');defs.innerHTML='<marker id="gah" markerWidth="7" markerHeight="7" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#5b6570"/></marker>';svg.appendChild(defs);
+ const today=fd(Date.now());const mk=(ds,color,label)=>{if(!ds||pd(ds)<pd(rangeStart)||pd(ds)>pd(rangeEnd))return;const x=TREEW+xOf(ds)+px/2;const ln=document.createElementNS(NS,'line');ln.setAttribute('x1',x);ln.setAttribute('x2',x);ln.setAttribute('y1',0);ln.setAttribute('y2',H+ROWH);ln.setAttribute('class','gvl');ln.setAttribute('stroke',color);ln.setAttribute('opacity','.55');svg.appendChild(ln);const tx=document.createElementNS(NS,'text');tx.setAttribute('x',x+3);tx.setAttribute('y',11);tx.setAttribute('font-size','10');tx.setAttribute('font-weight','600');tx.setAttribute('fill',color);tx.textContent=label;svg.appendChild(tx)};
+ mk(today,'#3b82f6','Today');mk(st.kickoff,'#1f9d63','Kickoff');mk(st.deadline,'#e2445c','Deadline');
+ for(const L of links){if(!(L.from_item in rowIndex)||!(L.to_item in rowIndex))continue;const P=tid(L.from_item),Sx=tid(L.to_item);if(!P||!Sx)continue;const ep=edgeX(P),es=edgeX(Sx);const y1=rowIndex[L.from_item]*ROWH+ROWH/2,y2=rowIndex[L.to_item]*ROWH+ROWH/2;const ss=(L.type[0]==='F')?'f':'s',ts=(L.type[1]==='S')?'s':'f';const x1=ss==='f'?ep.f:ep.s,x2=ts==='s'?es.s:es.f;const path=document.createElementNS(NS,'path');path.setAttribute('d',elbow(x1,y1,ss==='f'?1:-1,x2,y2,ts==='s'?-1:1));path.setAttribute('class','dep');path.setAttribute('marker-end','url(#gah)');path.addEventListener('click',ev=>{ev.stopPropagation();linkMenu(ev,L.id)});svg.appendChild(path)}
+ const tmp=document.createElementNS(NS,'path');tmp.id='gtmp';tmp.setAttribute('fill','none');tmp.setAttribute('stroke','#1f9d63');tmp.setAttribute('stroke-width','2');tmp.setAttribute('stroke-dasharray','4 3');svg.appendChild(tmp);rows.appendChild(svg);
+ inner.appendChild(head);inner.appendChild(rows);board.appendChild(inner);wrap.appendChild(board);
+ const content=document.getElementById('content');content.innerHTML='';content.appendChild(wrap);document.documentElement.style.setProperty('--gtw',TREEW+'px');
+ tool.querySelector('#gzoom').addEventListener('click',e=>{const b=e.target.closest('button');if(b)saveS({zoom:b.dataset.z}).then(renderGantt)});
+ tool.querySelector('#gcolor').addEventListener('change',e=>saveS({colorBy:e.target.value}).then(renderGantt));
+ tool.querySelector('#gset').addEventListener('click',settings);
+ rows.querySelectorAll('[data-car]').forEach(c=>c.addEventListener('click',()=>{collapsed['g'+c.dataset.car]=!collapsed['g'+c.dataset.car];renderGantt()}));
+}
+function renderWorkload(){build();range();const st=S();const lv=T.filter(isLeaf);const ppl=[...new Set(lv.map(t=>t.person).filter(Boolean))];const months=[];let d=new Date(pd(rangeStart));while(d.getTime()<=pd(rangeEnd)){months.push({y:d.getUTCFullYear(),m:d.getUTCMonth()});d=new Date(Date.UTC(d.getUTCFullYear(),d.getUTCMonth()+1,1))}
+ const isW=ms=>st.countWeekends?true:(new Date(ms).getUTCDay()%6!==0);const wdM=(y,m)=>{let c=0,last=new Date(Date.UTC(y,m+1,0)).getUTCDate();for(let dd=1;dd<=last;dd++)if(isW(Date.UTC(y,m,dd)))c++;return c};const wdB=(s,e)=>{let c=0,t=pd(s);while(t<=pd(e)){if(isW(t))c++;t+=DAY}return Math.max(1,c)};const ded=st.dedication||{};
+ const avail=(p,y,m)=>{const wd=wdM(y,m),dd=ded[p];if(!dd)return st.hoursPerDay*wd;if(dd.mode==='day')return dd.hours*wd;if(dd.mode==='week')return dd.hours*(wd/st.daysPerWeek);return dd.hours};
+ const tH=(t,y,m)=>{if(!t.start||t.milestone||!t.end)return 0;const per=t.eff/wdB(t.start,t.end);let c=0,dd=pd(t.start);while(dd<=pd(t.end)){const x=new Date(dd);if(x.getUTCFullYear()===y&&x.getUTCMonth()===m&&isW(dd))c++;dd+=DAY}return per*c};
+ let h='<div class="gwrap" style="height:auto"><div class="gtool"><b class="small">Workload — allocated / available hours per month</b><button class="btn sm ghost" id="gset2">⚙ Project</button></div><div style="overflow:auto"><table class="wlt"><tr><th>Person</th>'+months.map(mm=>`<th>${MON[mm.m]} ${String(mm.y).slice(2)}</th>`).join('')+'</tr>';
+ ppl.forEach(p=>{h+=`<tr><td class="pn">${esc(p)}</td>`;months.forEach(mm=>{let al=0;lv.filter(t=>t.person===p).forEach(t=>al+=tH(t,mm.y,mm.m));const av=avail(p,mm.y,mm.m),over=al>av+0.5;h+=`<td class="${over?'over':''}">${Math.round(al)}/${Math.round(av)}</td>`});h+='</tr>'});
+ if(!ppl.length)h+='<tr><td class="pn">No people with dates yet</td>'+months.map(()=>'<td>—</td>').join('')+'</tr>';
+ h+='</table></div></div>';const content=document.getElementById('content');content.innerHTML=h;const b=document.getElementById('gset2');if(b)b.addEventListener('click',settings)}
+function settings(){const st=S();overlay(`<h3>⚙ Project settings — ${esc(curBoard.name)}</h3>
+  <div class="row"><span class="small" style="width:150px">Kickoff (day zero)</span><input type="date" id="gs-k" value="${st.kickoff||''}"></div>
+  <div class="row"><span class="small" style="width:150px">Deadline</span><input type="date" id="gs-d" value="${st.deadline||''}"></div>
+  <div class="row"><span class="small" style="width:150px">Hours / day</span><input type="number" id="gs-h" value="${st.hoursPerDay}"></div>
+  <div class="row"><span class="small" style="width:150px">Days / week</span><input type="number" id="gs-w" value="${st.daysPerWeek}"></div>
+  <div class="row"><label class="small"><input type="checkbox" id="gs-cw" ${st.countWeekends?'checked':''}> Count weekends in workload</label></div>
+  <div class="row"><label class="small"><input type="checkbox" id="gs-sw" ${st.showWeekends?'checked':''}> Shade weekends (Day zoom)</label></div>
+  <button class="btn sm" style="align-self:flex-start" onclick="G._save(this)">Save</button>`)}
+window.G_save_impl=async function(btn){const q=id=>document.getElementById(id);await saveS({kickoff:q('gs-k').value||null,deadline:q('gs-d').value||null,hoursPerDay:Math.max(1,+q('gs-h').value||8),daysPerWeek:Math.max(1,Math.min(7,+q('gs-w').value||5)),countWeekends:q('gs-cw').checked,showWeekends:q('gs-sw').checked});btn.closest('.overlay').remove();(view==='workload'?renderWorkload:renderGantt)()};
+if(!document.getElementById('gtip')){const t=document.createElement('div');t.id='gtip';document.body.appendChild(t)}
+return {renderGantt,renderWorkload,settings,build,_save:(b)=>window.G_save_impl(b)};
+})();
 </script>
 </body>
 </html>
