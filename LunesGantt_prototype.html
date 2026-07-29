@@ -244,7 +244,10 @@
   .set-grid .chk{flex-direction:row;align-items:center;gap:8px}
   .set-grid .chk input{width:auto}
   /* per-column resizable widths (driven by CSS vars, persisted) */
-  :root{--w-id:34px;--w-person:96px;--w-start:74px;--w-finish:74px;--w-eff:58px;--w-pred:104px}
+  :root{--w-id:34px;--w-name:200px;--w-person:96px;--w-start:74px;--w-finish:74px;--w-eff:58px;--w-pred:104px}
+  .namecell{width:var(--w-name);flex:0 0 var(--w-name);display:flex;align-items:center;overflow:hidden}
+  .corner .c-name{width:var(--w-name);flex:0 0 var(--w-name)}
+  .corner .c-sp{width:16px;flex:0 0 16px}
   .idcell,.corner .c-id{width:var(--w-id);flex:0 0 var(--w-id)}
   .pcell,.corner .c-person{width:var(--w-person);flex:0 0 var(--w-person)}
   .dcell.d-start,.corner .c-start{width:var(--w-start);flex:0 0 var(--w-start)}
@@ -289,7 +292,7 @@
   <div class="board" id="board">
     <div class="inner" id="inner">
       <div class="head" id="head">
-        <div class="corner"><div class="cols"><div class="c-id">ID</div><span class="cres" data-c="id"></span><div class="c-sp"></div><div class="c-name">Activity</div><div class="c-person">Person</div><span class="cres" data-c="person"></span><div class="c-start">Start</div><span class="cres" data-c="start"></span><div class="c-finish">Finish</div><span class="cres" data-c="finish"></span><div class="c-eff">Effort</div><span class="cres" data-c="effort"></span><div class="c-pred">Pred.</div><div style="width:22px;flex:0 0 22px"></div></div><div class="col-resizer" id="colResizer" title="Drag to resize the whole list panel"></div></div>
+        <div class="corner"><div class="cols"><div class="c-id">ID</div><span class="cres" data-c="id"></span><div class="c-sp"></div><div class="c-name">Activity</div><span class="cres" data-c="name"></span><div class="c-person">Person</div><span class="cres" data-c="person"></span><div class="c-start">Start</div><span class="cres" data-c="start"></span><div class="c-finish">Finish</div><span class="cres" data-c="finish"></span><div class="c-eff">Effort</div><span class="cres" data-c="effort"></span><div class="c-pred">Pred.</div><span class="cres" data-c="pred"></span><div style="width:22px;flex:0 0 22px"></div></div></div>
         <div class="timehead" id="timehead"></div>
       </div>
       <div class="rows" id="rows"></div>
@@ -319,11 +322,12 @@
    ============================================================ */
 const $=id=>document.getElementById(id);
 const DAY=86400000, ROWH=34;
-let treeW=Math.min(1000,Math.max(320,+(localStorage.getItem('lunesgantt.treeW'))||690));
-function applyTreeW(){document.documentElement.style.setProperty('--treeW',treeW+'px')}
-let colW={id:34,person:96,start:74,finish:74,effort:58,pred:104};
+let colW={id:34,name:200,person:96,start:74,finish:74,effort:58,pred:104};
 try{const s=JSON.parse(localStorage.getItem('lunesgantt.colW'));if(s)colW=Object.assign(colW,s)}catch(e){}
-function applyColW(){const r=document.documentElement.style;r.setProperty('--w-id',colW.id+'px');r.setProperty('--w-person',colW.person+'px');r.setProperty('--w-start',colW.start+'px');r.setProperty('--w-finish',colW.finish+'px');r.setProperty('--w-eff',colW.effort+'px');r.setProperty('--w-pred',colW.pred+'px')}
+let treeW=690;
+function computeTreeW(){treeW=6+colW.id+16+colW.name+colW.person+colW.start+colW.finish+colW.effort+colW.pred+22+6;return treeW}
+function applyTreeW(){document.documentElement.style.setProperty('--treeW',treeW+'px')}
+function applyColW(){const r=document.documentElement.style;r.setProperty('--w-id',colW.id+'px');r.setProperty('--w-name',colW.name+'px');r.setProperty('--w-person',colW.person+'px');r.setProperty('--w-start',colW.start+'px');r.setProperty('--w-finish',colW.finish+'px');r.setProperty('--w-eff',colW.effort+'px');r.setProperty('--w-pred',colW.pred+'px')}
 const pd=s=>{const[y,m,d]=s.split('-').map(Number);return Date.UTC(y,m-1,d)};
 const fd=t=>new Date(t).toISOString().slice(0,10);
 const addD=(s,n)=>fd(pd(s)+n*DAY);
@@ -489,11 +493,13 @@ function renderRows(){
     const tc=document.createElement('div');tc.className='tcell lvl'+lvl;tc.style.paddingLeft='6px';
     const idc=document.createElement('div');idc.className='idcell';idc.textContent=t.code!=null?t.code:'';
     const dh=document.createElement('div');dh.className='drag-handle';dh.textContent='⠿';dh.title='Drag to reorder';dh.addEventListener('mousedown',e=>startRowDrag(e,t));
+    const nameCell=document.createElement('div');nameCell.className='namecell';
     const caret=document.createElement('div');caret.className='caret'+(leaf?' leaf':'');caret.style.marginLeft=(depth(t)*15)+'px';
     caret.innerHTML=leaf?'':`<svg width="10" height="10" viewBox="0 0 10 10"><path d="M3 1.5L7 5L3 8.5" stroke="currentColor" stroke-width="1.6" fill="none" stroke-linecap="round" stroke-linejoin="round" transform="${t.collapsed?'':'rotate(90 5 5)'}"/></svg>`;
     if(!leaf)caret.onclick=()=>{t.collapsed=!t.collapsed;render()};
     const nm=document.createElement('div');nm.className='name';nm.textContent=t.name;nm.title=t.name;nm.ondblclick=()=>startRename(nm,t);
     if(!leaf&&t.manualDates){const f=document.createElement('span');f.className='miniflag';f.textContent=' ⚑ manual';nm.appendChild(f)}
+    nameCell.append(caret,nm);
     const pc=document.createElement('div');pc.className='pcell'+((leaf&&!t.person)?' empty':'');pc.textContent=leaf?(t.person||'—'):'';
     if(leaf){pc.title=t.person||'';pc.onclick=()=>startPersonEdit(pc,t)}
     const editableDates=leaf||t.manualDates;
@@ -508,7 +514,7 @@ function renderRows(){
     const prc=document.createElement('div');prc.className='predcell'+(canPred?'':' ro')+((canPred&&!pv)?' empty':'');prc.textContent=canPred?(pv||'—'):'';
     if(canPred){prc.title=pv;prc.onclick=()=>startPredEdit(prc,t)}
     const mn=document.createElement('div');mn.className='rowmenu';mn.textContent='⋮';mn.title='Actions';mn.addEventListener('click',e=>{e.stopPropagation();openMenu(mn,t)});
-    tc.append(idc,dh,caret,nm,pc,sc,ec,eff,prc,mn);
+    tc.append(idc,dh,nameCell,pc,sc,ec,eff,prc,mn);
     const tk=document.createElement('div');tk.className='track';tk.style.width=totalW+'px';tk.innerHTML=gridHTML;
     renderBar(tk,t,leaf);
     row.append(tc,tk);rows.appendChild(row);
@@ -1080,12 +1086,11 @@ $('botFab').addEventListener('click',()=>{const p=$('botPanel');p.classList.togg
 $('botClose').addEventListener('click',()=>$('botPanel').classList.remove('open'));
 $('botSend').addEventListener('click',botSendMsg);
 $('botInput').addEventListener('keydown',e=>{if(e.key==='Enter')botSendMsg()});
-$('colResizer').addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const x0=e.clientX,w0=treeW;document.body.style.cursor='col-resize';document.body.style.userSelect='none';const mv=ev=>{treeW=Math.min(1000,Math.max(320,w0+(ev.clientX-x0)));applyTreeW();render()};const up=()=>{document.body.style.cursor='';document.body.style.userSelect='';localStorage.setItem('lunesgantt.treeW',treeW);document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)});
-document.querySelectorAll('.cres').forEach(h=>h.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const c=h.dataset.c,x0=e.clientX,w0=colW[c];document.body.style.cursor='col-resize';document.body.style.userSelect='none';const mv=ev=>{colW[c]=Math.max(24,w0+(ev.clientX-x0));applyColW()};const up=()=>{document.body.style.cursor='';document.body.style.userSelect='';localStorage.setItem('lunesgantt.colW',JSON.stringify(colW));document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)}));
+document.querySelectorAll('.cres').forEach(h=>h.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const c=h.dataset.c,x0=e.clientX,w0=colW[c];document.body.style.cursor='col-resize';document.body.style.userSelect='none';const mv=ev=>{colW[c]=Math.max(24,w0+(ev.clientX-x0));applyColW();computeTreeW();applyTreeW()};const up=()=>{document.body.style.cursor='';document.body.style.userSelect='';localStorage.setItem('lunesgantt.colW',JSON.stringify(colW));document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);render()};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)}));
 
 let _toastT;function toast(msg){let el=$('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;left:50%;bottom:52px;transform:translateX(-50%);background:#2b3033;color:#fff;padding:9px 14px;border-radius:8px;font-size:12px;z-index:95;box-shadow:0 6px 24px rgba(0,0,0,.2);max-width:80vw;text-align:center;transition:opacity .3s';document.body.appendChild(el)}el.textContent=msg;el.style.opacity='1';clearTimeout(_toastT);_toastT=setTimeout(()=>el.style.opacity='0',3400)}
 
-assignInitialCodes();initPeople();applyTreeW();applyColW();render();
+assignInitialCodes();initPeople();computeTreeW();applyTreeW();applyColW();render();
 </script>
 </body>
 </html>
