@@ -322,8 +322,9 @@
    ============================================================ */
 const $=id=>document.getElementById(id);
 const DAY=86400000, ROWH=34;
-let colW={id:34,name:200,person:96,start:74,finish:74,effort:58,pred:104};
-try{const s=JSON.parse(localStorage.getItem('lunesgantt.colW'));if(s)colW=Object.assign(colW,s)}catch(e){}
+const COLW_DEF={id:34,name:200,person:96,start:74,finish:74,effort:58,pred:104};
+let colW=Object.assign({},COLW_DEF);
+try{const s=JSON.parse(localStorage.getItem('lunesgantt.colW'))||{};for(const k in COLW_DEF){const v=+s[k];if(isFinite(v)&&v>=24)colW[k]=v}}catch(e){}
 let treeW=690;
 function computeTreeW(){treeW=6+colW.id+16+colW.name+colW.person+colW.start+colW.finish+colW.effort+colW.pred+22+6;return treeW}
 function applyTreeW(){document.documentElement.style.setProperty('--treeW',treeW+'px')}
