@@ -253,8 +253,15 @@
   .predcell,.corner .c-pred{width:var(--w-pred);flex:0 0 var(--w-pred)}
   .corner .c-start,.corner .c-finish{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
   .tcell{overflow:hidden}
-  .cres{width:7px;flex:0 0 7px;cursor:col-resize;align-self:stretch;z-index:8;margin:0 -3px}
-  .cres:hover{background:linear-gradient(90deg,transparent,rgba(31,157,99,.4))}
+  /* align header exactly with body rows: same leading, no inter-column gaps */
+  .corner .cols{gap:0;padding:0 6px 7px 6px}
+  .corner .c-name,.corner .c-person,.corner .c-start,.corner .c-finish,.corner .c-pred{padding-left:4px}
+  .corner .c-eff{text-align:right;padding-right:4px}
+  .corner .c-id{text-align:right;padding-right:6px}
+  /* zero-width resizer overlay so it never shifts columns */
+  .cres{width:0;flex:0 0 0;position:relative;align-self:stretch;z-index:9}
+  .cres::after{content:"";position:absolute;left:-4px;width:9px;top:0;bottom:0;cursor:col-resize}
+  .cres:hover::after{background:linear-gradient(90deg,transparent,rgba(31,157,99,.55),transparent)}
   @media print{
     .toolbar,#legend,.hint,.rowmenu,.drag-handle,.linkdot,.drop-line{display:none!important}
     .board{overflow:visible!important;height:auto!important}
