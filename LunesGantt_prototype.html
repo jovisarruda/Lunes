@@ -3,7 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>LunesGantt — Prototype (A0–A6)</title>
+<title>LunesGantt</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 <style>
   :root{
     --bg:#ffffff; --panel:#fbfcfc; --line:#e8ecef; --line2:#f1f4f6;
@@ -115,6 +116,24 @@
   .tabs button.on{background:var(--green-l);color:var(--green-d)}
   /* workload */
   #workload{flex:1;overflow:auto;padding:18px 20px;display:none}
+  #kanban,#calendar{display:none;padding:14px 18px;height:calc(100vh - 60px);overflow:auto;box-sizing:border-box}
+  .kbwrap{display:flex;gap:12px;align-items:flex-start}
+  .kbcol{flex:0 0 250px;background:var(--panel);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+  .kbhead{padding:9px 11px;font-weight:600;font-size:13px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:6px}
+  .kbdot{width:10px;height:10px;border-radius:50%;display:inline-block}
+  .kbn{margin-left:auto;color:var(--muted);font-weight:500}
+  .kbbody{padding:8px;min-height:60px;display:flex;flex-direction:column;gap:7px}
+  .kbbody.over{background:var(--green-l)}
+  .kbcard{background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 10px;cursor:grab;box-shadow:var(--shadow)}
+  .kbc-nm{font-weight:600;font-size:13px}
+  .kbc-meta{color:var(--muted);font-size:11px;margin-top:3px}
+  .calbar{display:flex;align-items:center;gap:12px;margin-bottom:10px}
+  .calgrid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px;background:var(--line);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+  .calh{background:var(--panel);padding:6px;text-align:center;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .calcell{background:#fff;min-height:92px;padding:4px 5px}
+  .calcell.out{background:var(--panel)}
+  .cald{font-size:11px;color:var(--muted2);text-align:right}
+  .calev{font-size:11px;padding:2px 5px;border-radius:5px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
   #workload h4{margin:0 0 10px;font-size:13px;color:var(--slate)}
   .wl-controls{display:flex;gap:18px;flex-wrap:wrap;align-items:flex-end;margin-bottom:18px}
   .wl-controls .f{display:flex;flex-direction:column;gap:3px}
@@ -278,7 +297,7 @@
 <div class="app">
   <div class="toolbar">
     <div class="title">LunesGantt <small>prototype · A0–A9</small></div>
-    <div class="tabs" id="tabs"><button data-v="gantt" class="on">Gantt</button><button data-v="workload">Workload</button></div>
+    <div class="tabs" id="tabs"><button data-v="gantt" class="on">Gantt</button><button data-v="workload">Workload</button><button data-v="kanban">Kanban</button><button data-v="calendar">Calendar</button></div>
     <span class="spacer"></span>
     <span class="lbl" data-g>Zoom</span>
     <div class="seg" id="zoom" data-g>
@@ -299,6 +318,8 @@
     </div>
   </div>
   <div id="workload"></div>
+  <div id="kanban"></div>
+  <div id="calendar"></div>
 
   <div class="hint">
     <b>Link</b>: drag a ○ dot from one bar's start/finish onto another bar (side you drop on decides FS/SS/FF/SF) · click a dependency arrow to change its type or delete · move a bar to see the reschedule preview · <b>Critical path</b> highlights the driving chain.
@@ -334,7 +355,57 @@ const fd=t=>new Date(t).toISOString().slice(0,10);
 const addD=(s,n)=>fd(pd(s)+n*DAY);
 const diffD=(a,b)=>Math.round((pd(b)-pd(a))/DAY);
 const MON=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-const uid=()=>Math.random().toString(36).slice(2,9);
+const uid=()=>(window.crypto&&crypto.randomUUID?crypto.randomUUID():'x'+Math.random().toString(36).slice(2)+Date.now().toString(36));
+/* ===== Supabase connection (board = ?board=<id>). Standalone/demo mode when absent. ===== */
+const CONN=new URLSearchParams(location.search).get('board');
+const SB=CONN?window.supabase.createClient('https://ybzrpqgofxkzaqasfsna.supabase.co','sb_publishable_0I8ZhiGBgfjWKBwTHV3TSA_11Kj3Jid'):null;
+let COL={},DEFGROUP=null,SHADOW={items:{},links:{}},SYNCT=null,MYNAME='You';
+const _cv=(it,cid)=>cid&&it.col_values?(it.col_values[cid]??null):null;
+async function loadFromDB(){
+  const [gc,cc,ic,lc,bc]=await Promise.all([
+    SB.from('groups').select('*').eq('board_id',CONN).order('position'),
+    SB.from('board_columns').select('*').eq('board_id',CONN).eq('scope','item').order('position'),
+    SB.from('items').select('*').eq('board_id',CONN).eq('archived',false).order('position'),
+    SB.from('links').select('*').eq('board_id',CONN),
+    SB.from('boards').select('settings,name').eq('id',CONN).single()
+  ]);
+  DEFGROUP=(gc.data&&gc.data[0]&&gc.data[0].id)||null;
+  const bcols=cc.data||[];
+  const find=(re,ty)=>bcols.find(c=>re&&re.test(c.name))||bcols.find(c=>c.type===ty);
+  COL={start:find(/start|in[ií]cio/i,'date'),finish:find(/finish|end|t[ée]rmino/i,'date'),person:find(null,'person'),effort:find(/effort|esfor/i,'number'),status:find(null,'status'),category:find(/categ/i,'label')};
+  // dates: if start & finish resolved to same col, split
+  if(COL.start&&COL.finish&&COL.start.id===COL.finish.id){const ds=bcols.filter(c=>c.type==='date');COL.start=ds[0];COL.finish=ds[1]||ds[0];}
+  const items=ic.data||[];
+  tasks=items.filter(it=>!(it.col_values&&it.col_values._pending)).map(it=>({id:it.id,parent:it.parent_id,name:it.name,code:it.code,start:_cv(it,COL.start&&COL.start.id),end:_cv(it,COL.finish&&COL.finish.id),milestone:!!(it.col_values&&it.col_values._milestone),eff:+_cv(it,COL.effort&&COL.effort.id)||0,effU:'h',person:_cv(it,COL.person&&COL.person.id)||'',status:_cv(it,COL.status&&COL.status.id)||'',cat:_cv(it,COL.category&&COL.category.id)||'',collapsed:false,manualDates:!!(it.col_values&&it.col_values._manualDates),cv:Object.assign({},it.col_values),_group:it.group_id}));
+  links=(lc.data||[]).map(l=>({id:l.id,from:l.from_item,to:l.to_item,type:l.type,lag:l.lag||0}));
+  // configurable columns for Details (Status/Category use logical ids; others use real ids)
+  columns=[];
+  if(COL.status)columns.push({id:'status',name:COL.status.name,type:'status',native:true,_rid:COL.status.id});
+  if(COL.category)columns.push({id:'category',name:COL.category.name,type:'label',native:true,options:COL.category.options||{choices:[]},_rid:COL.category.id});
+  for(const c of bcols){if([COL.start,COL.finish,COL.person,COL.effort,COL.status,COL.category].some(x=>x&&x.id===c.id))continue;columns.push({id:c.id,name:c.name,type:c.type,options:c.options||{},_rid:c.id});}
+  if(COL.status&&COL.status.options&&COL.status.options.labels){STATUS={};COL.status.options.labels.forEach(l=>STATUS[l.name]=l.color);}
+  const st=(bc.data&&bc.data.settings)||{};
+  if(st.kickoff)kickoff=st.kickoff; if(st.deadline)deadline=st.deadline;
+  if(st.hoursPerDay)settings.hoursPerDay=st.hoursPerDay; if(st.daysPerWeek)settings.daysPerWeek=st.daysPerWeek;
+  if('countWeekends'in st)settings.countWeekends=st.countWeekends; if('showWeekends'in st)settings.showWeekends=st.showWeekends;
+  if(st.colorBy)colorBy=st.colorBy; if(st.dedication)dedication=st.dedication;
+  seq=Math.max(0,...tasks.map(t=>t.code||0));
+  try{const u=await SB.auth.getUser();MYNAME=(u&&u.data&&u.data.user&&(u.data.user.email||u.data.user.id))||'You'}catch(e){}
+  SHADOW=snapDB();
+  document.title='LunesGantt · '+((bc.data&&bc.data.name)||'');
+}
+function itemPayload(t){const cv=Object.assign({},t.cv||{});const set=(c,v)=>{if(c&&c.id)cv[c.id]=(v===''||v===undefined?null:v)};set(COL.start,t.start);set(COL.finish,t.milestone?t.start:t.end);set(COL.person,t.person);set(COL.effort,t.eff||null);set(COL.status,t.status);set(COL.category,t.cat);if(t.milestone)cv._milestone=true;else delete cv._milestone;if(t.manualDates)cv._manualDates=true;else delete cv._manualDates;return{id:t.id,board_id:CONN,group_id:t._group||DEFGROUP,parent_id:t.parent||null,name:t.name,code:t.code,position:tasks.indexOf(t),col_values:cv}}
+function linkPayload(l){return{id:l.id,board_id:CONN,from_item:l.from,to_item:l.to,type:l.type,lag:l.lag||0}}
+function snapDB(){return{items:tasks.reduce((m,t)=>{m[t.id]=JSON.stringify(itemPayload(t));return m},{}),links:links.reduce((m,l)=>{m[l.id]=JSON.stringify(linkPayload(l));return m},{})}}
+function scheduleSync(){if(!CONN)return;clearTimeout(SYNCT);SYNCT=setTimeout(syncToDB,350)}
+async function syncToDB(){if(!CONN)return;const cur=snapDB();const ups=[],del=[],lnUp=[],lnDel=[];
+  for(const id in cur.items)if(cur.items[id]!==SHADOW.items[id])ups.push(JSON.parse(cur.items[id]));
+  for(const id in SHADOW.items)if(!(id in cur.items))del.push(id);
+  for(const id in cur.links)if(cur.links[id]!==SHADOW.links[id])lnUp.push(JSON.parse(cur.links[id]));
+  for(const id in SHADOW.links)if(!(id in cur.links))lnDel.push(id);
+  try{const jobs=[];if(ups.length)jobs.push(SB.from('items').upsert(ups));if(del.length)jobs.push(SB.from('items').delete().in('id',del));if(lnUp.length)jobs.push(SB.from('links').upsert(lnUp));if(lnDel.length)jobs.push(SB.from('links').delete().in('id',lnDel));await Promise.all(jobs);SHADOW=cur;}catch(e){console.warn('sync',e)}
+}
+async function saveSettingsDB(){if(!CONN)return;await SB.from('boards').update({settings:{kickoff,deadline,hoursPerDay:settings.hoursPerDay,daysPerWeek:settings.daysPerWeek,countWeekends:settings.countWeekends,showWeekends:settings.showWeekends,colorBy,dedication}}).eq('id',CONN)}
 const fmtShort=s=>{const[,m,d]=s.split('-');return d+' '+MON[+m-1]};
 
 let STATUS={'To Do':'#c4c4c4','Working on it':'#fdab3d','Done':'#00c875','Stuck':'#e2445c'};
@@ -445,7 +516,7 @@ const xOf=s=>diffD(rangeStart,s)*PX[zoom];
 const daysFromX=px=>Math.round(px/PX[zoom]);
 
 /* ============================================================ RENDER */
-function render(){computeRange();if(critOn)computeCritical();else{critSet=new Set();critLinks=new Set()}$('timehead').style.width=totalW+'px';renderHeader();renderRows();renderLegend()}
+function render(){computeRange();if(critOn)computeCritical();else{critSet=new Set();critLinks=new Set()}$('timehead').style.width=totalW+'px';renderHeader();renderRows();renderLegend();if(CONN)scheduleSync()}
 
 function renderHeader(){
   const top=[],bot=[],px=PX[zoom];
@@ -727,14 +798,19 @@ function renderPanel(){
   document.getElementById('pName').textContent=t.name;
   const body=document.getElementById('panelBody');const leaf=isLeaf(t);
   if(panelTab==='comments'){
-    const cs=t.comments||[];
     body.innerHTML=`<textarea id="cmtBox" placeholder="Write a comment…" style="width:100%;min-height:64px;border:1px solid var(--line);border-radius:8px;padding:7px;font:inherit"></textarea>
-      <div style="margin:8px 0"><button class="btn" id="cmtBtn" style="background:var(--green);border-color:var(--green);color:#fff">Comment</button></div>
-      ${cs.map(c=>`<div class="comment"><div class="meta">${c.author} · ${new Date(c.ts).toLocaleString()}</div>${escapeHtml(c.body)}</div>`).join('')||'<p class="pmeta">No comments yet.</p>'}`;
-    body.querySelector('#cmtBtn').onclick=()=>{const v=body.querySelector('#cmtBox').value.trim();if(!v)return;(t.comments=t.comments||[]).unshift({author:'You',ts:Date.now(),body:v});renderPanel()};
+      <div style="margin:8px 0"><button class="btn" id="cmtBtn" style="background:var(--green);border-color:var(--green);color:#fff">Comment</button></div><div id="cmtList"><p class="pmeta">${CONN?'Loading…':'No comments yet.'}</p></div>`;
+    if(CONN){
+      body.querySelector('#cmtBtn').onclick=async()=>{const v=body.querySelector('#cmtBox').value.trim();if(!v)return;await SB.from('comments').insert({item_id:t.id,author:MYNAME,body:v});renderPanel()};
+      SB.from('comments').select('*').eq('item_id',t.id).order('created_at',{ascending:false}).then(({data})=>{const l=document.getElementById('cmtList');if(!l)return;l.innerHTML=(data||[]).map(c=>`<div class="comment"><div class="meta">${escapeHtml(c.author||'')} · ${new Date(c.created_at).toLocaleString()}</div>${escapeHtml(c.body)}</div>`).join('')||'<p class="pmeta">No comments yet.</p>'});
+    }else{
+      const cs=t.comments||[];body.querySelector('#cmtList').innerHTML=cs.map(c=>`<div class="comment"><div class="meta">${c.author} · ${new Date(c.ts).toLocaleString()}</div>${escapeHtml(c.body)}</div>`).join('')||'<p class="pmeta">No comments yet.</p>';
+      body.querySelector('#cmtBtn').onclick=()=>{const v=body.querySelector('#cmtBox').value.trim();if(!v)return;(t.comments=t.comments||[]).unshift({author:'You',ts:Date.now(),body:v});renderPanel()};
+    }
     return;
   }
   if(panelTab==='log'){
+    if(CONN){body.innerHTML='<p class="pmeta">Loading…</p>';SB.from('activity_logs').select('*').eq('item_id',t.id).order('created_at',{ascending:false}).limit(200).then(({data})=>{body.innerHTML=(data||[]).map(l=>{const what=l.field==='created'?'created this item':`changed <b>${escapeHtml(l.field||'')}</b>${l.old_value?` from “${escapeHtml(l.old_value)}”`:''} to “${escapeHtml(l.new_value||'')}”`;return `<div class="logline">${escapeHtml(l.author||'?')} ${what}<div class="t">${new Date(l.created_at).toLocaleString()}</div></div>`}).join('')||'<p class="pmeta">No activity yet.</p>'});return}
     const ls=t.log||[];
     body.innerHTML=ls.map(l=>{const what=l.field==='created'?'created this item':`changed <b>${escapeHtml(l.field)}</b>${l.old?` from “${escapeHtml(String(l.old))}”`:''} to “${escapeHtml(String(l.new))}”`;return `<div class="logline">${l.who} ${what}<div class="t">${new Date(l.ts).toLocaleString()}</div></div>`}).join('')||'<p class="pmeta">No activity yet.</p>';
     return;
@@ -966,7 +1042,28 @@ $('tabs').addEventListener('click',e=>{const b=e.target.closest('button');if(b)s
 $('btnSettings').addEventListener('click',openSettings);
 
 /* ============================================================ VIEWS / WORKLOAD (A7) / SETTINGS (A9) / PDF (A8) */
-function setView(v){currentView=v;[...$('tabs').children].forEach(b=>b.classList.toggle('on',b.dataset.v===v));document.querySelectorAll('[data-g]').forEach(el=>el.style.display=(v==='gantt')?'':'none');$('board').style.display=(v==='gantt')?'':'none';$('workload').style.display=(v==='workload')?'block':'none';if(v==='gantt')render();else renderWorkload()}
+function setView(v){currentView=v;[...$('tabs').children].forEach(b=>b.classList.toggle('on',b.dataset.v===v));document.querySelectorAll('[data-g]').forEach(el=>el.style.display=(v==='gantt')?'':'none');$('board').style.display=(v==='gantt')?'':'none';$('workload').style.display=(v==='workload')?'block':'none';$('kanban').style.display=(v==='kanban')?'block':'none';$('calendar').style.display=(v==='calendar')?'block':'none';if(v==='gantt')render();else if(v==='workload')renderWorkload();else if(v==='kanban')renderKb();else renderCal()}
+/* ===== Kanban (by Status) — Gantt-specific ===== */
+function renderKb(){const el=$('kanban');const cols=Object.keys(STATUS).length?Object.keys(STATUS):['To Do','Working on it','Done'];const leaves=tasks.filter(isLeaf);
+ let h='<div class="kbwrap">';for(const s of cols){const cards=leaves.filter(t=>(t.status||'')===s);h+=`<div class="kbcol" data-st="${escAttr(s)}"><div class="kbhead"><span class="kbdot" style="background:${STATUS[s]||'#c4c4c4'}"></span>${esc(s)} <span class="kbn">${cards.length}</span></div><div class="kbbody" data-st="${escAttr(s)}">`+cards.map(t=>`<div class="kbcard" draggable="true" data-id="${t.id}"><div class="kbc-nm">${esc(t.name)}</div><div class="kbc-meta">#${t.code!=null?t.code:''} ${t.person?'· '+esc(t.person):''}${t.start?' · '+fmtShort(t.start):''}</div></div>`).join('')+'</div></div>'}
+ const none=leaves.filter(t=>!STATUS[t.status||'']);if(none.length){h+=`<div class="kbcol" data-st=""><div class="kbhead">— <span class="kbn">${none.length}</span></div><div class="kbbody" data-st="">`+none.map(t=>`<div class="kbcard" draggable="true" data-id="${t.id}"><div class="kbc-nm">${esc(t.name)}</div><div class="kbc-meta">#${t.code!=null?t.code:''} ${t.person?'· '+esc(t.person):''}</div></div>`).join('')+'</div></div>'}
+ h+='</div>';el.innerHTML=h;
+ el.querySelectorAll('.kbcard').forEach(c=>c.addEventListener('dragstart',e=>e.dataTransfer.setData('id',c.dataset.id)));
+ el.querySelectorAll('.kbbody').forEach(b=>{b.addEventListener('dragover',e=>{e.preventDefault();b.classList.add('over')});b.addEventListener('dragleave',()=>b.classList.remove('over'));b.addEventListener('drop',e=>{e.preventDefault();b.classList.remove('over');const id=e.dataTransfer.getData('id');const t=byId(id);if(t){t.status=b.dataset.st;render();renderKb()}})});
+}
+/* ===== Calendar (by start date) — Gantt-specific ===== */
+let calMonth=null;
+function renderCal(){const el=$('calendar');const all=tasks.filter(t=>isLeaf(t)&&t.start);
+ if(!calMonth){const base=all.length?all[0].start:new Date().toISOString().slice(0,10);const[y,m]=base.split('-');calMonth=y+'-'+m}
+ const[cy,cm]=calMonth.split('-').map(Number);const first=new Date(Date.UTC(cy,cm-1,1)),start=new Date(first);start.setUTCDate(1-((first.getUTCDay()+6)%7));
+ const MONF=['January','February','March','April','May','June','July','August','September','October','November','December'];
+ let h=`<div class="calbar"><button class="btn" id="calPrev">‹</button><b>${MONF[cm-1]} ${cy}</b><button class="btn" id="calNext">›</button></div><div class="calgrid"><div class="calh">Mon</div><div class="calh">Tue</div><div class="calh">Wed</div><div class="calh">Thu</div><div class="calh">Fri</div><div class="calh">Sat</div><div class="calh">Sun</div>`;
+ for(let i=0;i<42;i++){const d=new Date(start);d.setUTCDate(start.getUTCDate()+i);const ds=d.toISOString().slice(0,10);const inM=d.getUTCMonth()===cm-1;const evs=all.filter(t=>t.start===ds);h+=`<div class="calcell${inM?'':' out'}"><div class="cald">${d.getUTCDate()}</div>`+evs.map(t=>`<div class="calev" data-id="${t.id}" title="${esc(t.name)}" style="background:${(STATUS[t.status]||'#579bfc')}22;color:${STATUS[t.status]||'#3a5'}">${t.milestone?'◆ ':''}${esc(t.name)}</div>`).join('')+'</div>'}
+ h+='</div>';el.innerHTML=h;
+ $('calPrev').onclick=()=>{let m=cm-1;let y=cy;if(m<1){m=12;y--}calMonth=y+'-'+String(m).padStart(2,'0');renderCal()};
+ $('calNext').onclick=()=>{let m=cm+1;let y=cy;if(m>12){m=1;y++}calMonth=y+'-'+String(m).padStart(2,'0');renderCal()};
+ el.querySelectorAll('.calev').forEach(e=>e.addEventListener('click',()=>{const t=byId(e.dataset.id);if(t)openDetails(t)}));
+}
 
 let wlGran='month';
 function uniquePeople(){peopleList.forEach(p=>{if(!dedication[p])dedication[p]={hours:settings.hoursPerDay,mode:'day'}});return peopleList.slice()}
@@ -996,13 +1093,13 @@ function renderWorkload(){
   h+='</table></div>';
   el.innerHTML=h;
   $('wl-cw').value=settings.countWeekends?'1':'0';$('wl-gran').value=wlGran;
-  $('wl-hpd').onchange=e=>{settings.hoursPerDay=Math.max(1,+e.target.value||8);renderWorkload()};
-  $('wl-dpw').onchange=e=>{settings.daysPerWeek=Math.max(1,Math.min(7,+e.target.value||5));renderWorkload()};
-  $('wl-cw').onchange=e=>{settings.countWeekends=e.target.value==='1';renderWorkload()};
+  $('wl-hpd').onchange=e=>{settings.hoursPerDay=Math.max(1,+e.target.value||8);saveSettingsDB();renderWorkload()};
+  $('wl-dpw').onchange=e=>{settings.daysPerWeek=Math.max(1,Math.min(7,+e.target.value||5));saveSettingsDB();renderWorkload()};
+  $('wl-cw').onchange=e=>{settings.countWeekends=e.target.value==='1';saveSettingsDB();renderWorkload()};
   $('wl-gran').onchange=e=>{wlGran=e.target.value;renderWorkload()};
-  $('wl-add').onclick=()=>{const n=prompt('Person name:');if(!n)return;const v=n.trim();if(!v)return;if(!peopleList.includes(v))peopleList.push(v);if(!dedication[v])dedication[v]={hours:settings.hoursPerDay,mode:'day'};renderWorkload()};
-  el.querySelectorAll('[data-rm]').forEach(b=>{b.onclick=()=>{const p=b.dataset.rm;const used=tasks.some(t=>isLeaf(t)&&t.person===p);if(used&&!confirm('"'+p+'" is assigned to activities. Remove from this list anyway? (activities keep the name)'))return;peopleList=peopleList.filter(x=>x!==p);delete dedication[p];renderWorkload()}});
-  el.querySelectorAll('[data-ded]').forEach(inp=>{inp.onchange=e=>{const p=e.target.dataset.ded,k=e.target.dataset.k;if(k==='hours')dedication[p].hours=Math.max(0,+e.target.value||0);else dedication[p].mode=e.target.value;renderWorkload()}});
+  $('wl-add').onclick=()=>{const n=prompt('Person name:');if(!n)return;const v=n.trim();if(!v)return;if(!peopleList.includes(v))peopleList.push(v);if(!dedication[v])dedication[v]={hours:settings.hoursPerDay,mode:'day'};saveSettingsDB();renderWorkload()};
+  el.querySelectorAll('[data-rm]').forEach(b=>{b.onclick=()=>{const p=b.dataset.rm;const used=tasks.some(t=>isLeaf(t)&&t.person===p);if(used&&!confirm('"'+p+'" is assigned to activities. Remove from this list anyway? (activities keep the name)'))return;peopleList=peopleList.filter(x=>x!==p);delete dedication[p];saveSettingsDB();renderWorkload()}});
+  el.querySelectorAll('[data-ded]').forEach(inp=>{inp.onchange=e=>{const p=e.target.dataset.ded,k=e.target.dataset.k;if(k==='hours')dedication[p].hours=Math.max(0,+e.target.value||0);else dedication[p].mode=e.target.value;saveSettingsDB();renderWorkload()}});
 }
 
 function openSettings(){
@@ -1031,7 +1128,7 @@ function openSettings(){
     settings.daysPerWeek=Math.max(1,Math.min(7,+m.querySelector('#s-dpw').value||5));
     settings.countWeekends=m.querySelector('#s-cw').checked;settings.showWeekends=m.querySelector('#s-sw').checked;
     colorBy=m.querySelector('#s-color').value;_grid.key='';
-    scrim.remove();currentView==='gantt'?render():renderWorkload();
+    scrim.remove();saveSettingsDB();currentView==='gantt'?render():renderWorkload();
   };
   scrim.addEventListener('mousedown',e=>{if(e.target===scrim)scrim.remove()});
 }
@@ -1091,7 +1188,11 @@ document.querySelectorAll('.cres').forEach(h=>h.addEventListener('mousedown',e=>
 
 let _toastT;function toast(msg){let el=$('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;left:50%;bottom:52px;transform:translateX(-50%);background:#2b3033;color:#fff;padding:9px 14px;border-radius:8px;font-size:12px;z-index:95;box-shadow:0 6px 24px rgba(0,0,0,.2);max-width:80vw;text-align:center;transition:opacity .3s';document.body.appendChild(el)}el.textContent=msg;el.style.opacity='1';clearTimeout(_toastT);_toastT=setTimeout(()=>el.style.opacity='0',3400)}
 
-assignInitialCodes();initPeople();computeTreeW();applyTreeW();applyColW();render();
+(async function init(){
+  if(CONN){try{await loadFromDB()}catch(e){console.error(e);document.body.innerHTML='<p style="padding:24px;font:14px sans-serif;color:#b02a3c">Failed to load this board.<br>'+esc(e.message||e)+'</p>';return}}
+  else assignInitialCodes();
+  initPeople();computeTreeW();applyTreeW();applyColW();render();
+})();
 </script>
 </body>
 </html>

@@ -656,17 +656,24 @@ function renderView(){
   if(!curBoard)return;
   updateAiCount();
   const proj=isProjectBoard();
-  $('tab-gantt').style.display=proj?'':'none';
-  $('tab-workload').style.display=proj?'':'none';
-  if(!proj&&(view==='gantt'||view==='workload'))view='table';
-  ['table','kanban','calendar','aiinput','gantt','workload'].forEach(x=>{const b=$('tab-'+x);if(b)b.classList.toggle('active',x===view)});
-  if(view==='gantt')return G.renderGantt();      // B4
-  if(view==='workload')return G.renderWorkload(); // B4
+  const tabsEl=document.querySelector('#topbar .tabs'); if(tabsEl)tabsEl.style.display=proj?'none':'';
+  const tr=$('topRight'); if(tr)tr.style.display=proj?'none':'';
+  if(proj)return renderProjectApp();           // Rework: project board = LunesGantt prototype (iframe)
+  $('content').dataset.pg='';
+  const g=$('tab-gantt'),w=$('tab-workload'); if(g)g.style.display='none'; if(w)w.style.display='none';
+  if(view==='gantt'||view==='workload')view='table';
+  ['table','kanban','calendar','aiinput'].forEach(x=>{const b=$('tab-'+x);if(b)b.classList.toggle('active',x===view)});
   if(view==='table')renderTable();
   else if(view==='kanban')renderKanban();
   else if(view==='aiinput')renderAIInput();
   else renderCalendar();
   renderBatchBar();
+}
+function renderProjectApp(){
+  const c=$('content');
+  if(c.dataset.pg===curBoard.id)return;
+  c.dataset.pg=curBoard.id;
+  c.innerHTML='<iframe id="pgframe" src="LunesGantt_prototype.html?board='+curBoard.id+'&t='+Date.now()+'" style="width:100%;height:calc(100vh - 54px);border:0;display:block;background:#fff"></iframe>';
 }
 
 /* ---- cell rendering & editing ---- */
