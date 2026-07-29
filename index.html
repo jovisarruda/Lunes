@@ -286,22 +286,37 @@ const itemCols=()=>cols.filter(c=>c.scope==='item');
 const subCols=()=>cols.filter(c=>c.scope==='subitem');
 const subsOf=id=>items.filter(x=>x.parent_id===id);
 const topItems=()=>items.filter(x=>!x.parent_id);
+const isProjectBoard=()=>!!(curBoard&&curBoard.template==='project'); // B0 gate
+function descendantIds(id){const out=[];for(const c of items.filter(x=>x.parent_id===id)){out.push(c.id,...descendantIds(c.id))}return out}
 
 async function addBoard(){
   const name=prompt('Board name:');if(!name)return;
-  const {data,error}=await sb.from('boards').insert({name,position:boards.length}).select().single();
+  // B0 — choose the page template at creation. It CANNOT be changed later.
+  const project=confirm('Create as a PROJECT board?\n\nOK  = Project  (Gantt · Workload · unlimited sub-elements)\nCancel = Default  (Table · Kanban · Calendar)\n\nThe board type cannot be changed after creation.');
+  const template=project?'project':'default';
+  const {data,error}=await sb.from('boards').insert({name,position:boards.length,template}).select().single();
   if(error)return toast(error.message);
-  // default setup
   const gs=[{board_id:data.id,name:'To Do',color:'#579bfc',position:0},{board_id:data.id,name:'Doing',color:'#fdab3d',position:1},{board_id:data.id,name:'Done',color:'#00c875',position:2}];
   await sb.from('groups').insert(gs);
-  await sb.from('board_columns').insert([
-    {board_id:data.id,scope:'item',name:'Person',type:'person',position:0,options:{}},
-    {board_id:data.id,scope:'item',name:'Status',type:'status',position:1,options:{labels:[{name:'To Do',color:'#c4c4c4'},{name:'Working on it',color:'#fdab3d'},{name:'Done',color:'#00c875'},{name:'Stuck',color:'#e2445c'}]}},
-    {board_id:data.id,scope:'item',name:'Date',type:'date',position:2,options:{}},
-    {board_id:data.id,scope:'subitem',name:'Person',type:'person',position:0,options:{}},
-    {board_id:data.id,scope:'subitem',name:'Status',type:'status',position:1,options:{labels:[{name:'To Do',color:'#c4c4c4'},{name:'Working on it',color:'#fdab3d'},{name:'Done',color:'#00c875'}]}},
-    {board_id:data.id,scope:'subitem',name:'Date',type:'date',position:2,options:{}}
-  ]);
+  if(project){
+    // Project boards use ONE (item-scope) column set for every level of the tree.
+    await sb.from('board_columns').insert([
+      {board_id:data.id,scope:'item',name:'Person',type:'person',position:0,options:{}},
+      {board_id:data.id,scope:'item',name:'Status',type:'status',position:1,options:{labels:[{name:'To Do',color:'#c4c4c4'},{name:'Working on it',color:'#fdab3d'},{name:'Done',color:'#00c875'},{name:'Stuck',color:'#e2445c'}]}},
+      {board_id:data.id,scope:'item',name:'Start',type:'date',position:2,options:{}},
+      {board_id:data.id,scope:'item',name:'Finish',type:'date',position:3,options:{}},
+      {board_id:data.id,scope:'item',name:'Effort (h)',type:'number',position:4,options:{}}
+    ]);
+  }else{
+    await sb.from('board_columns').insert([
+      {board_id:data.id,scope:'item',name:'Person',type:'person',position:0,options:{}},
+      {board_id:data.id,scope:'item',name:'Status',type:'status',position:1,options:{labels:[{name:'To Do',color:'#c4c4c4'},{name:'Working on it',color:'#fdab3d'},{name:'Done',color:'#00c875'},{name:'Stuck',color:'#e2445c'}]}},
+      {board_id:data.id,scope:'item',name:'Date',type:'date',position:2,options:{}},
+      {board_id:data.id,scope:'subitem',name:'Person',type:'person',position:0,options:{}},
+      {board_id:data.id,scope:'subitem',name:'Status',type:'status',position:1,options:{labels:[{name:'To Do',color:'#c4c4c4'},{name:'Working on it',color:'#fdab3d'},{name:'Done',color:'#00c875'}]}},
+      {board_id:data.id,scope:'subitem',name:'Date',type:'date',position:2,options:{}}
+    ]);
+  }
   boards.push(data);renderBoardNav();selectBoard(data.id);
 }
 function boardMenu(e){
@@ -432,9 +447,11 @@ function itemMenu(e,id){
 }
 async function deleteItem(id){
   const it=items.find(x=>x.id===id);if(!it)return;
-  if(!confirm('Delete "'+it.name+'"?'))return;
-  await sb.from('items').delete().eq('id',id);
-  items=items.filter(x=>x.id!==id&&x.parent_id!==id);
+  const kids=descendantIds(id);
+  if(!confirm('Delete "'+it.name+'"'+(kids.length?' and its '+kids.length+' sub-element(s)':'')+'?'))return;
+  const ids=[id,...kids];
+  await sb.from('items').delete().in('id',ids);
+  items=items.filter(x=>!ids.includes(x.id));
   renderView();
 }
 /* click = open details (delayed so dblclick can cancel); dblclick or ✎ = inline rename */
@@ -632,6 +649,7 @@ function choiceMenu(e,itemId,colId){
 
 /* ---- TABLE ---- */
 function renderTable(){
+  if(isProjectBoard())return renderProjectTable(); // B1
   const ic=itemCols(),sc=subCols();
   let html='';
   for(const g of groups){
@@ -697,6 +715,64 @@ function renderTable(){
   }
   if(!groups.length)html='<p style="margin-top:30px" class="small">No groups yet — use ⋯ next to the board title to add one.</p>';
   $('content').innerHTML=html;
+}
+/* ===== PROJECT template: recursive (N-level) table ===== */
+function renderProjectTable(){
+  const ic=itemCols(),W=colW();let html='';
+  for(const g of groups){
+    const isCol=collapsed[g.id];
+    const gi=topItems().filter(x=>x.group_id===g.id&&itemVisible(x));
+    const sums=ic.filter(c=>c.type==='number').map(c=>({c,t:gi.filter(x=>!isPending(x)).reduce((s,it)=>s+effNum(it,c),0)}));
+    html+=`<div class="group"><div class="group-head">
+      <h3 style="color:${g.color}" onclick="collapsed['${g.id}']=!collapsed['${g.id}'];renderView()">${isCol?'▸':'▾'} ${esc(g.name)}</h3>
+      <button class="icon-btn" onclick="groupMenu(event,'${g.id}')">⋯</button></div>`;
+    if(!isCol){
+      const tw=(W.name||360)+ic.reduce((t,c)=>t+(W[c.id]||140),0)+40;
+      html+=`<table class="gtable" style="table-layout:fixed;width:${tw}px"><tr><th style="width:${W.name||360}px;position:relative">Activity<span class="rz" onmousedown="rzStart(event,'name')"></span></th>${ic.map(c=>`<th style="width:${W[c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'${c.id}')"></span></th>`).join('')}<th style="width:40px"></th></tr>`;
+      html+=projRows(g.id,null,0,ic);
+      html+=`<tr><td colspan="${ic.length+2}" class="addrow" onclick="promptAdd('${g.id}',null)">+ Add item</td></tr>`;
+      if(sums.length&&gi.length)html+=`<tr class="sumrow"><td></td>${ic.map(c=>{const s=sums.find(x=>x.c.id===c.id);return `<td>${s?fmtMoney(s.t):''}</td>`}).join('')}<td></td></tr>`;
+      html+='</table>';
+    }
+    html+='</div>';
+  }
+  if(!groups.length)html='<p style="margin-top:30px" class="small">No groups yet — use ⋯ next to the board title to add one.</p>';
+  $('content').innerHTML=html;
+}
+function projRows(groupId,parentId,depth,ic){
+  const rows=(parentId===null
+    ? topItems().filter(x=>x.group_id===groupId&&itemVisible(x))
+    : subsOf(parentId).filter(x=>passFilter(x))
+  ).slice().sort((a,b)=>(a.position||0)-(b.position||0));
+  let html='';
+  for(const it of rows){
+    const kids=subsOf(it.id);
+    const open=!collapsed['x'+it.id];
+    const pad=8+depth*20;
+    html+=`<tr class="item"><td><div class="iname" style="padding-left:${pad}px">
+      <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
+      <button class="exp" onclick="collapsed['x${it.id}']=!collapsed['x${it.id}'];renderView()">${kids.length?(open?'▾':'▸'):'·'}</button>
+      <span class="nm" data-nm="${it.id}" onclick="nmClick(event,'${it.id}')" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
+      <button class="nm-edit" title="Rename" onclick="startRename(event,'${it.id}')">✎</button>
+      ${kids.length?`<span class="small">${kids.length}</span>`:''}
+    </div></td>
+    ${ic.map(c=>`<td>${cellHtml(it,c)}</td>`).join('')}
+    <td><button class="icon-btn" onclick="projItemMenu(event,'${it.id}')">⋯</button></td></tr>`;
+    if(kids.length&&open){
+      html+=projRows(groupId,it.id,depth+1,ic);
+      html+=`<tr><td colspan="${ic.length+2}" class="addrow" style="padding-left:${pad+42}px" onclick="promptAdd('${groupId}','${it.id}')">+ Add sub-element</td></tr>`;
+    }
+  }
+  return html;
+}
+function projItemMenu(e,id){
+  const it=items.find(x=>x.id===id);if(!it)return;
+  menu(e,[
+    ['↳ Add sub-element',()=>promptAdd(it.group_id,it.id)],
+    ['+ Add element (same level)',()=>{const n=prompt('Element name:');if(n)createItem(it.group_id,it.parent_id,n)}],
+    ['Open details',()=>openPanel(id)],
+    ['!Delete (with sub-elements)',()=>deleteItem(id)]
+  ]);
 }
 function colW(){try{return JSON.parse(localStorage.getItem('lunes_w_'+curBoard.id)||'{}')}catch(e){return{}}}
 function rzStart(e,key){
