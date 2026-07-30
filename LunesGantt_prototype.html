@@ -296,7 +296,7 @@
 <body>
 <div class="app">
   <div class="toolbar">
-    <div class="title">LunesGantt <small>prototype · A0–A9</small></div>
+    <div class="title">LunesGantt</div>
     <div class="tabs" id="tabs"><button data-v="gantt" class="on">Gantt</button><button data-v="workload">Workload</button><button data-v="kanban">Kanban</button><button data-v="calendar">Calendar</button></div>
     <span class="spacer"></span>
     <span class="lbl" data-g>Zoom</span>
@@ -327,12 +327,6 @@
 </div>
 <div class="drag-tip" id="tip"></div>
 <div class="drag-ghost" id="ghost"></div>
-<button id="botFab" title="Ask about this board">✨</button>
-<div id="botPanel">
-  <div id="botHead">Assistant <span>read-only · answers only</span><button id="botClose" title="Close">✕</button></div>
-  <div id="botMsgs"></div>
-  <div id="botInputRow"><input id="botInput" placeholder="Ask about the schedule…" autocomplete="off"><button id="botSend">Send</button></div>
-</div>
 
 <script>
 /* ============================================================
@@ -1190,10 +1184,6 @@ function botAnswer(q){
   if(t)return `#${t.code} ${t.name}: ${t.person||'—'}, ${t.start?fmtLong(t.start):'—'} ${t.milestone?'◆':'→ '+fmtLong(t.end)}, ${t.eff||0}h${predText(t)?', deps '+predText(t):''}.`;
   return "I can answer about counts, dates, critical path, dependencies, effort, people and workload — but I can't add or change anything. Try naming a task, e.g. \"dependencies of Front-end\", or type \"help\".";
 }
-$('botFab').addEventListener('click',()=>{const p=$('botPanel');p.classList.toggle('open');if(p.classList.contains('open')){if(!$('botMsgs').children.length)botAdd("Hi! I'm a read-only assistant for this Project board — I answer questions but never change anything. Ask me things like: how many tasks, when does it finish, critical path, dependencies of Front-end, who is overloaded. Type \"help\" for more.",'a');$('botInput').focus()}});
-$('botClose').addEventListener('click',()=>$('botPanel').classList.remove('open'));
-$('botSend').addEventListener('click',botSendMsg);
-$('botInput').addEventListener('keydown',e=>{if(e.key==='Enter')botSendMsg()});
 document.querySelectorAll('.cres').forEach(h=>h.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const c=h.dataset.c,x0=e.clientX,w0=colW[c];document.body.style.cursor='col-resize';document.body.style.userSelect='none';const mv=ev=>{colW[c]=Math.max(24,w0+(ev.clientX-x0));applyColW();computeTreeW();applyTreeW()};const up=()=>{document.body.style.cursor='';document.body.style.userSelect='';localStorage.setItem('lunesgantt.colW',JSON.stringify(colW));document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);render()};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)}));
 
 let _toastT;function toast(msg){let el=$('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;left:50%;bottom:52px;transform:translateX(-50%);background:#2b3033;color:#fff;padding:9px 14px;border-radius:8px;font-size:12px;z-index:95;box-shadow:0 6px 24px rgba(0,0,0,.2);max-width:80vw;text-align:center;transition:opacity .3s';document.body.appendChild(el)}el.textContent=msg;el.style.opacity='1';clearTimeout(_toastT);_toastT=setTimeout(()=>el.style.opacity='0',3400)}
