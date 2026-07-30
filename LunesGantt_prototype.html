@@ -767,8 +767,9 @@ function openLinkMenu(e,L){
 
 /* ============================================================ DETAILS PANEL + COLUMNS (like the list-view boards) */
 let panelId=null, panelTab='details';
-const escapeHtml=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-const escAttr=s=>String(s).replace(/"/g,'&quot;');
+const escapeHtml=s=>String(s==null?'':s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const escAttr=s=>String(s==null?'':s).replace(/"/g,'&quot;');
+const esc=escapeHtml; // Kanban/Calendar render used esc() but only escapeHtml/escAttr were defined
 function getVal(t,col){if(col.id==='status')return t.status||'';if(col.id==='category')return t.cat||'';return (t.cv&&t.cv[col.id])??''}
 function setVal(t,col,val){const old=getVal(t,col);if(col.id==='status')t.status=val;else if(col.id==='category')t.cat=val;else t.cv={...(t.cv||{}),[col.id]:val};logAct(t,col.name,old,val);render();if(panelId===t.id)renderPanel()}
 function logAct(t,field,oldV,newV){(t.log=t.log||[]).unshift({who:'You',ts:Date.now(),field,old:oldV,new:newV});dbLog(t,field,oldV,newV)}
