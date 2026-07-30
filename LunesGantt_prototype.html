@@ -406,6 +406,15 @@ async function syncToDB(){if(!CONN)return;const cur=snapDB();const ups=[],del=[]
   try{const jobs=[];if(ups.length)jobs.push(SB.from('items').upsert(ups));if(del.length)jobs.push(SB.from('items').delete().in('id',del));if(lnUp.length)jobs.push(SB.from('links').upsert(lnUp));if(lnDel.length)jobs.push(SB.from('links').delete().in('id',lnDel));await Promise.all(jobs);SHADOW=cur;}catch(e){console.warn('sync',e)}
 }
 async function saveSettingsDB(){if(!CONN)return;await SB.from('boards').update({settings:{kickoff,deadline,hoursPerDay:settings.hoursPerDay,daysPerWeek:settings.daysPerWeek,countWeekends:settings.countWeekends,showWeekends:settings.showWeekends,colorBy,dedication}}).eq('id',CONN)}
+/* ===== R4 — persist Details activity log + column editor to Supabase (board_columns / activity_logs) ===== */
+function colRealId(col){return col&&(col._rid||col.id)}
+function statusLabelsArr(){return Object.keys(STATUS).map(n=>({name:n,color:STATUS[n]}))}
+async function dbLog(t,field,oldV,newV){if(!CONN||!t)return;try{await SB.from('activity_logs').insert({item_id:t.id,author:MYNAME,field,old_value:String(oldV==null?'':oldV),new_value:String(newV==null?'':newV)})}catch(e){}}
+async function dbSaveColOptions(col){if(!CONN||!col)return;try{await SB.from('board_columns').update({options:col.options||{}}).eq('id',colRealId(col))}catch(e){console.warn('col opts',e)}}
+async function dbSaveStatusLabels(){if(!CONN)return;const sc=columns.find(c=>c.type==='status');if(!sc)return;sc.options=Object.assign({},sc.options,{labels:statusLabelsArr()});if(COL.status)COL.status.options=sc.options;try{await SB.from('board_columns').update({options:sc.options}).eq('id',colRealId(sc))}catch(e){console.warn('labels',e)}}
+async function dbInsertColumn(col){if(!CONN)return col.id;try{const {data,error}=await SB.from('board_columns').insert({board_id:CONN,scope:'item',name:col.name,type:col.type,options:col.options||{},position:columns.length}).select().single();if(error){console.warn('addcol',error);return col.id}return data.id}catch(e){console.warn('addcol',e);return col.id}}
+async function dbRenameColumn(col){if(!CONN||!col)return;try{await SB.from('board_columns').update({name:col.name}).eq('id',colRealId(col))}catch(e){console.warn('rencol',e)}}
+async function dbDeleteColumn(col){if(!CONN||!col)return;try{await SB.from('board_columns').delete().eq('id',colRealId(col))}catch(e){console.warn('delcol',e)}}
 const fmtShort=s=>{const[,m,d]=s.split('-');return d+' '+MON[+m-1]};
 
 let STATUS={'To Do':'#c4c4c4','Working on it':'#fdab3d','Done':'#00c875','Stuck':'#e2445c'};
@@ -762,7 +771,7 @@ const escapeHtml=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'
 const escAttr=s=>String(s).replace(/"/g,'&quot;');
 function getVal(t,col){if(col.id==='status')return t.status||'';if(col.id==='category')return t.cat||'';return (t.cv&&t.cv[col.id])??''}
 function setVal(t,col,val){const old=getVal(t,col);if(col.id==='status')t.status=val;else if(col.id==='category')t.cat=val;else t.cv={...(t.cv||{}),[col.id]:val};logAct(t,col.name,old,val);render();if(panelId===t.id)renderPanel()}
-function logAct(t,field,oldV,newV){(t.log=t.log||[]).unshift({who:'You',ts:Date.now(),field,old:oldV,new:newV})}
+function logAct(t,field,oldV,newV){(t.log=t.log||[]).unshift({who:'You',ts:Date.now(),field,old:oldV,new:newV});dbLog(t,field,oldV,newV)}
 function ancestorsOf(t){const out=[];let p=byId(t.parent);while(p){out.unshift(p.name);p=byId(p.parent)}return out}
 function ensurePeopleDL(){let dl=document.getElementById('peopleDL');if(!dl){dl=document.createElement('datalist');dl.id='peopleDL';document.body.appendChild(dl)}dl.innerHTML=peopleList.map(p=>`<option value="${escAttr(p)}">`).join('')}
 function openDetails(t){panelId=t.id;panelTab='details';renderPanelShell();renderPanel()}
@@ -850,13 +859,13 @@ function openColumnsEditor(){
   const reopen=()=>{scrim.remove();openColumnsEditor()};
   const finish=()=>{scrim.remove();if(panelId)renderPanel();render()};
   m.querySelector('[data-a="close"]').onclick=finish;scrim.addEventListener('mousedown',e=>{if(e.target===scrim)finish()});
-  m.querySelector('#nc-add').onclick=()=>{const n=m.querySelector('#nc-name').value.trim();if(!n)return;const ty=m.querySelector('#nc-type').value;const col={id:'c'+uid(),name:n,type:ty,options:{}};if(ty==='label')col.options.choices=[];columns.push(col);reopen()};
-  m.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{columns=columns.filter(c=>c.id!==b.dataset.del);reopen()});
-  m.querySelectorAll('[data-ren]').forEach(b=>b.onclick=()=>{const c=columns.find(x=>x.id===b.dataset.ren);const n=prompt('Column name:',c.name);if(n&&n.trim()){c.name=n.trim();reopen()}});
-  const al=m.querySelector('[data-addlabel]');if(al)al.onclick=()=>{const n=prompt('Status label name:');if(n&&n.trim()){STATUS[n.trim()]=STATUS_COLORS[Object.keys(STATUS).length%STATUS_COLORS.length];reopen()}};
-  m.querySelectorAll('[data-dellabel]').forEach(b=>b.onclick=()=>{if(Object.keys(STATUS).length>1){delete STATUS[b.dataset.dellabel];reopen()}});
-  m.querySelectorAll('[data-addchoice]').forEach(b=>b.onclick=()=>{const c=columns.find(x=>x.id===b.dataset.addchoice);const n=prompt('Choice:');if(n&&n.trim()){(c.options.choices=c.options.choices||[]).push(n.trim());reopen()}});
-  m.querySelectorAll('[data-delchoice]').forEach(b=>b.onclick=()=>{const[id,i]=b.dataset.delchoice.split('|');const c=columns.find(x=>x.id===id);c.options.choices.splice(+i,1);reopen()});
+  m.querySelector('#nc-add').onclick=async()=>{const n=m.querySelector('#nc-name').value.trim();if(!n)return;const ty=m.querySelector('#nc-type').value;const col={id:'c'+uid(),name:n,type:ty,options:{}};if(ty==='label')col.options.choices=[];if(ty==='status')col.options.labels=statusLabelsArr();const rid=await dbInsertColumn(col);col.id=rid;col._rid=rid;columns.push(col);reopen()};
+  m.querySelectorAll('[data-del]').forEach(b=>b.onclick=()=>{const c=columns.find(x=>x.id===b.dataset.del);columns=columns.filter(x=>x.id!==b.dataset.del);if(c)dbDeleteColumn(c);reopen()});
+  m.querySelectorAll('[data-ren]').forEach(b=>b.onclick=()=>{const c=columns.find(x=>x.id===b.dataset.ren);const n=prompt('Column name:',c.name);if(n&&n.trim()){c.name=n.trim();dbRenameColumn(c);reopen()}});
+  const al=m.querySelector('[data-addlabel]');if(al)al.onclick=()=>{const n=prompt('Status label name:');if(n&&n.trim()){STATUS[n.trim()]=STATUS_COLORS[Object.keys(STATUS).length%STATUS_COLORS.length];dbSaveStatusLabels();reopen()}};
+  m.querySelectorAll('[data-dellabel]').forEach(b=>b.onclick=()=>{if(Object.keys(STATUS).length>1){delete STATUS[b.dataset.dellabel];dbSaveStatusLabels();reopen()}});
+  m.querySelectorAll('[data-addchoice]').forEach(b=>b.onclick=()=>{const c=columns.find(x=>x.id===b.dataset.addchoice);const n=prompt('Choice:');if(n&&n.trim()){(c.options.choices=c.options.choices||[]).push(n.trim());dbSaveColOptions(c);reopen()}});
+  m.querySelectorAll('[data-delchoice]').forEach(b=>b.onclick=()=>{const[id,i]=b.dataset.delchoice.split('|');const c=columns.find(x=>x.id===id);c.options.choices.splice(+i,1);dbSaveColOptions(c);reopen()});
 }
 
 function newLeaf(parent,after){const s=after&&(after.end||after.start)?addD(after.milestone?after.start:after.end,1):(rangeStart?addD(rangeStart,4):'2026-08-03');return{id:uid(),code:nextCode(),parent,name:'New task',start:s,end:addD(s,3),eff:8,effU:'h',person:'',status:'To Do',cat:''}}
