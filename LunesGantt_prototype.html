@@ -370,7 +370,7 @@ async function loadFromDB(){
   // dates: if start & finish resolved to same col, split
   if(COL.start&&COL.finish&&COL.start.id===COL.finish.id){const ds=bcols.filter(c=>c.type==='date');COL.start=ds[0];COL.finish=ds[1]||ds[0];}
   const items=ic.data||[];
-  tasks=items.filter(it=>!(it.col_values&&it.col_values._pending)).map(it=>({id:it.id,parent:it.parent_id,name:it.name,code:it.code,start:_cv(it,COL.start&&COL.start.id),end:_cv(it,COL.finish&&COL.finish.id),milestone:!!(it.col_values&&it.col_values._milestone),eff:+_cv(it,COL.effort&&COL.effort.id)||0,effU:'h',person:_cv(it,COL.person&&COL.person.id)||'',status:_cv(it,COL.status&&COL.status.id)||'',cat:_cv(it,COL.category&&COL.category.id)||'',collapsed:false,manualDates:!!(it.col_values&&it.col_values._manualDates),cv:Object.assign({},it.col_values),_group:it.group_id}));
+  tasks=items.filter(it=>!(it.col_values&&it.col_values._pending)).map(it=>({id:it.id,parent:it.parent_id,name:it.name,code:it.code,start:_cv(it,COL.start&&COL.start.id),end:_cv(it,COL.finish&&COL.finish.id),milestone:!!(it.col_values&&it.col_values._milestone),eff:+_cv(it,COL.effort&&COL.effort.id)||0,effU:(it.col_values&&it.col_values._effortUnit)||'h',person:_cv(it,COL.person&&COL.person.id)||'',status:_cv(it,COL.status&&COL.status.id)||'',cat:_cv(it,COL.category&&COL.category.id)||'',collapsed:false,manualDates:!!(it.col_values&&it.col_values._manualDates),cv:Object.assign({},it.col_values),_group:it.group_id}));
   links=(lc.data||[]).map(l=>({id:l.id,from:l.from_item,to:l.to_item,type:l.type,lag:l.lag||0}));
   // configurable columns for Details (Status/Category use logical ids; others use real ids)
   columns=[];
@@ -388,7 +388,7 @@ async function loadFromDB(){
   SHADOW=snapDB();
   document.title='LunesGantt · '+((bc.data&&bc.data.name)||'');
 }
-function itemPayload(t){const cv=Object.assign({},t.cv||{});const set=(c,v)=>{if(c&&c.id)cv[c.id]=(v===''||v===undefined?null:v)};set(COL.start,t.start);set(COL.finish,t.milestone?t.start:t.end);set(COL.person,t.person);set(COL.effort,t.eff||null);set(COL.status,t.status);set(COL.category,t.cat);if(t.milestone)cv._milestone=true;else delete cv._milestone;if(t.manualDates)cv._manualDates=true;else delete cv._manualDates;return{id:t.id,board_id:CONN,group_id:t._group||DEFGROUP,parent_id:t.parent||null,name:t.name,code:t.code,position:tasks.indexOf(t),col_values:cv}}
+function itemPayload(t){const cv=Object.assign({},t.cv||{});const set=(c,v)=>{if(c&&c.id)cv[c.id]=(v===''||v===undefined?null:v)};set(COL.start,t.start);set(COL.finish,t.milestone?t.start:t.end);set(COL.person,t.person);set(COL.effort,t.eff||null);set(COL.status,t.status);set(COL.category,t.cat);if(t.milestone)cv._milestone=true;else delete cv._milestone;if(t.manualDates)cv._manualDates=true;else delete cv._manualDates;if(t.effU)cv._effortUnit=t.effU;else delete cv._effortUnit;return{id:t.id,board_id:CONN,group_id:t._group||DEFGROUP,parent_id:t.parent||null,name:t.name,code:t.code,position:tasks.indexOf(t),col_values:cv}}
 function linkPayload(l){return{id:l.id,board_id:CONN,from_item:l.from,to_item:l.to,type:l.type,lag:l.lag||0}}
 function snapDB(){return{items:tasks.reduce((m,t)=>{m[t.id]=JSON.stringify(itemPayload(t));return m},{}),links:links.reduce((m,l)=>{m[l.id]=JSON.stringify(linkPayload(l));return m},{})}}
 function scheduleSync(){if(!CONN)return;clearTimeout(SYNCT);SYNCT=setTimeout(syncToDB,350)}
@@ -463,7 +463,7 @@ let columns=[
 let zoom='week', colorBy='none', critOn=false, currentView='gantt';
 const PX={day:30,week:10,month:4.4};
 let rangeStart,rangeEnd,totalDays,totalW;
-const TODAY='2026-09-08';
+const TODAY=(()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')})();
 let kickoff='2026-08-03', deadline='2026-11-06';
 let settings={hoursPerDay:8, daysPerWeek:5, countWeekends:false, showWeekends:true};
 let dedication={}; // person -> {hours, mode:'day'|'week'|'month'}
@@ -498,8 +498,16 @@ function subtreeIds(id){const ids=[id];for(const c of tasks.filter(x=>x.parent==
 function lastIdxSub(id){const s=new Set(subtreeIds(id));let last=-1;tasks.forEach((x,i)=>{if(s.has(x.id))last=i});return last}
 function extractSubtree(t){const s=new Set(subtreeIds(t.id));const block=tasks.filter(x=>s.has(x.id));tasks=tasks.filter(x=>!s.has(x.id));return block}
 function leavesUnder(id){const t=byId(id);if(t&&isLeaf(t))return[t];const out=[];(function rec(pid){for(const c of tasks.filter(x=>x.parent===pid)){if(isLeaf(c))out.push(c);else rec(c.id)}})(id);return out}
-function effStart(t){if(isLeaf(t))return t.start;if(t.manualDates)return t.start;const l=leavesUnder(t.id).filter(x=>x.start);return l.length?l.reduce((a,b)=>pd(b.start)<pd(a)?b.start:a,l[0].start):null}
-function effEnd(t){if(isLeaf(t))return t.milestone?t.start:t.end;if(t.manualDates)return t.end;const l=leavesUnder(t.id).filter(x=>x.start);return l.length?l.reduce((a,b)=>{const e=b.milestone?b.start:b.end;return pd(e)>pd(a)?e:a},'0000-01-01'):null}
+function validDate(s){return typeof s==='string'&&/^\d{4}-\d{2}-\d{2}$/.test(s)&&Number.isFinite(pd(s))}
+function summarySpan(t){
+  if(isLeaf(t)){const s=validDate(t.start)?t.start:null,e=t.milestone?s:(validDate(t.end)?t.end:null);return{s,e}}
+  if(t.manualDates&&validDate(t.start)&&validDate(t.end)&&pd(t.end)>=pd(t.start))return{s:t.start,e:t.end};
+  const spans=leavesUnder(t.id).map(x=>({s:validDate(x.start)?x.start:null,e:x.milestone&&validDate(x.start)?x.start:(validDate(x.end)?x.end:null)})).filter(x=>x.s&&x.e);
+  if(!spans.length)return{s:null,e:null};
+  return{s:spans.reduce((a,b)=>pd(b.s)<pd(a)?b.s:a,spans[0].s),e:spans.reduce((a,b)=>pd(b.e)>pd(a)?b.e:a,spans[0].e)};
+}
+function effStart(t){return summarySpan(t).s}
+function effEnd(t){return summarySpan(t).e}
 function visibleRows(){const out=[];(function rec(pid){for(const t of tasks.filter(x=>x.parent===pid)){out.push(t);if(!isLeaf(t)&&!t.collapsed)rec(t.id)}})(null);return out}
 const dur=t=>t.milestone?0:diffD(t.start,t.end);
 const linkable=t=>isLeaf(t)||t.manualDates; // has concrete dates
@@ -683,15 +691,21 @@ function renderLegend(){
 
 /* ============================================================ NAME / EFFORT EDIT */
 function startRename(nm,t){nm.contentEditable=true;nm.textContent=t.name;nm.focus();const r=document.createRange();r.selectNodeContents(nm);const sel=getSelection();sel.removeAllRanges();sel.addRange(r);const done=()=>{nm.contentEditable=false;const v=nm.textContent.trim();if(v)t.name=v;render()};nm.onblur=done;nm.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();nm.blur()}if(ev.key==='Escape'){nm.textContent=t.name;nm.blur()}}}
-function startEffEdit(cell,t){const cur=t.eff||0;cell.innerHTML=`<input type="number" min="0" value="${cur}">`;const inp=cell.querySelector('input');inp.focus();inp.select();let handled=false;const done=()=>{if(handled)return;handled=true;const v=Math.max(0,parseFloat(inp.value)||0);onEffortEdited(t,v)};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){handled=true;render()}}}
+function effortText(t){return String(t.eff||0)+(t.effU||'h')}
+function parseEffort(raw){
+  const m=String(raw||'').trim().toLowerCase().replace(',','.').match(/^(\d+(?:\.\d+)?)\s*([hdwmy])?$/);
+  if(!m)return null;
+  return{value:Math.max(0,+m[1]),unit:m[2]||'d'};
+}
+function startEffEdit(cell,t){const cur=effortText(t);cell.innerHTML=`<input type="text" inputmode="decimal" value="${cur}" placeholder="5, 8h, 2w, 1m, 1y">`;const inp=cell.querySelector('input');inp.focus();inp.select();let handled=false;const done=()=>{if(handled)return;handled=true;const p=parseEffort(inp.value);if(!p){toast('Use a number (days) or h/d/w/m/y, e.g. 5, 8h, 2w, 1m.');return render()}onEffortEdited(t,p.value,p.unit)};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();inp.blur()}if(ev.key==='Escape'){handled=true;render()}}}
 function startPersonEdit(cell,t){const dl='dl'+uid();cell.innerHTML=`<input list="${dl}" value="${(t.person||'').replace(/"/g,'&quot;')}"><datalist id="${dl}">${peopleList.map(p=>`<option value="${p}">`).join('')}</datalist>`;const inp=cell.querySelector('input');inp.focus();inp.select();let handled=false;const done=()=>{if(handled)return;handled=true;const v=inp.value.trim();t.person=v;if(v&&!peopleList.includes(v))peopleList.push(v);if(v&&!dedication[v])dedication[v]={hours:settings.hoursPerDay,mode:'day'};render()};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){handled=true;render()}}}
 function startPredEdit(cell,t){const cur=predText(t);cell.innerHTML=`<input value="${escAttr(cur)}" placeholder="1FS; 10FS">`;const inp=cell.querySelector('input');inp.focus();inp.select();let handled=false;const done=()=>{if(handled)return;handled=true;setPredecessors(t,inp.value)};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){handled=true;render()}}}
-function startDateEdit(cell,t,which){const cur=which==='start'?t.start:(t.milestone?t.start:t.end);cell.innerHTML=`<input type="date" value="${cur||''}">`;const inp=cell.querySelector('input');inp.focus();let handled=false;const done=()=>{if(handled)return;handled=true;const v=inp.value;if(!v||v===cur)return render();if(which==='start')onStartEdited(t,v);else onEndEdited(t,v)};inp.onblur=done;inp.onchange=done;inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){handled=true;render()}}}
+function startDateEdit(cell,t,which){const cur=which==='start'?t.start:(t.milestone?t.start:t.end);cell.innerHTML=`<input type="date" value="${cur||''}">`;const inp=cell.querySelector('input');inp.focus();let handled=false;const done=()=>{if(handled)return;handled=true;const v=inp.value;if(!v||v===cur)return render();if(which==='start')onStartEdited(t,v);else onEndEdited(t,v)};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();inp.blur()}if(ev.key==='Escape'){handled=true;render()}}}
 
 /* ---- effort <-> dates coupling ---- */
-function effToHours(t){const u=t.effU||'h',v=t.eff||0,H=settings.hoursPerDay,D=settings.daysPerWeek;return u==='h'?v:u==='d'?v*H:u==='w'?v*H*D:v*H*D*4.33}
+function effToHours(t){const u=t.effU||'h',v=t.eff||0,H=settings.hoursPerDay,D=settings.daysPerWeek;return u==='h'?v:u==='d'?v*H:u==='w'?v*H*D:u==='m'?v*H*D*4.33:v*H*D*4.33*12}
 function effDurDays(t){return Math.max(1,Math.round(effToHours(t)/settings.hoursPerDay))}
-function setEffortFromDays(t,days){t.eff=Math.max(0,days*settings.hoursPerDay);t.effU='h'}
+function setEffortFromDays(t,days){t.eff=Math.max(0,days);t.effU='d'}
 function proposeOrCommit(t,ns,ne){if(ns===t.start&&ne===(t.milestone?t.start:t.end))return render();proposeChange(t,ns,ne)}
 
 function onEndEdited(t,newEnd){
@@ -704,9 +718,9 @@ function onStartEdited(t,newStart){
   if((t.eff||0)>0){couplingModal('start',t,{newStart,newEnd:t.end})}
   else{let ne=t.end;if(pd(newStart)>pd(ne))ne=newStart;proposeOrCommit(t,newStart,ne)}
 }
-function onEffortEdited(t,v){
+function onEffortEdited(t,v,u){
   const had=(t.start&&t.end&&!t.milestone);
-  t.eff=v;
+  t.eff=v;t.effU=u||t.effU||'d';
   if(!had||v===0)return render();
   couplingModal('effort',t,{});
 }
@@ -825,16 +839,17 @@ function renderPanel(){
   h+=field('Person', leaf?`<input id="f-person" list="peopleDL" value="${escAttr(t.person||'')}">`:`<span class="ro">— (rolls up)</span>`);
   h+=field('Start', editableDates?`<input type="date" id="f-start" value="${sVal||''}">`:`<span class="ro">${sVal?fmtShort(sVal):'—'}</span>`);
   h+=field('Finish', (editableDates&&!t.milestone)?`<input type="date" id="f-end" value="${eVal||''}">`:`<span class="ro">${t.milestone?'◆ milestone':(eVal?fmtShort(eVal):'—')}</span>`);
-  h+=field('Effort', leaf?`<input type="number" min="0" id="f-eff" value="${t.eff||0}">`:`<span class="ro">—</span>`);
+  h+=field('Effort', leaf?`<input type="text" inputmode="decimal" id="f-eff" value="${escAttr(effortText(t))}" placeholder="5, 8h, 2w, 1m, 1y">`:`<span class="ro">—</span>`);
   if(leaf)h+=field('Milestone', `<label style="color:var(--slate)"><input type="checkbox" id="f-ms" ${t.milestone?'checked':''} style="width:auto;margin-right:6px">0-day milestone</label>`);
   if(leaf)h+=field('Predecessors', `<input id="f-pred" value="${escAttr(predText(t))}" placeholder="e.g. 1FS; 10FS">`);
   for(const col of columns)h+=field(col.name, valEditor(t,col));
   body.innerHTML=`<p class="pmeta">${leaf?'Leaf task':'Summary'} · ${subtreeIds(t.id).length-1} sub-item(s)</p>`+h;
   if(leaf){
     const P=body.querySelector('#f-person');if(P)P.onchange=()=>{const old=t.person,v=P.value.trim();t.person=v;if(v&&!peopleList.includes(v))peopleList.push(v);logAct(t,'Person',old,v);render();renderPanel()};
-    const S=body.querySelector('#f-start');if(S)S.onchange=()=>{if(S.value&&S.value!==t.start)onStartEdited(t,S.value)};
-    const E=body.querySelector('#f-end');if(E)E.onchange=()=>{if(E.value&&E.value!==t.end)onEndEdited(t,E.value)};
-    const EF=body.querySelector('#f-eff');if(EF)EF.onchange=()=>onEffortEdited(t,Math.max(0,+EF.value||0));
+    const bindDate=(el,old,fn)=>{if(!el)return;let done=false;const commit=()=>{if(done)return;done=true;if(el.value&&el.value!==old)fn(el.value)};el.onblur=commit;el.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();el.blur()}if(ev.key==='Escape'){done=true;renderPanel()}}};
+    bindDate(body.querySelector('#f-start'),t.start,v=>onStartEdited(t,v));
+    bindDate(body.querySelector('#f-end'),t.end,v=>onEndEdited(t,v));
+    const EF=body.querySelector('#f-eff');if(EF){let done=false;const commit=()=>{if(done)return;done=true;const p=parseEffort(EF.value);if(!p){toast('Use a number (days) or h/d/w/m/y.');return renderPanel()}onEffortEdited(t,p.value,p.unit)};EF.onblur=commit;EF.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();EF.blur()}if(ev.key==='Escape'){done=true;renderPanel()}}}
     const MS=body.querySelector('#f-ms');if(MS)MS.onchange=()=>{t.milestone=MS.checked;if(MS.checked)t.end=t.start;logAct(t,'Milestone','',MS.checked);render();renderPanel()};
     const PR=body.querySelector('#f-pred');if(PR)PR.onchange=()=>setPredecessors(t,PR.value);
   }
@@ -882,17 +897,18 @@ function endDrag(mv,up){document.removeEventListener('mousemove',mv);document.re
 function dragBar(bar,t){bar.addEventListener('mousedown',e=>{if(e.target.classList.contains('h'))return startResize(e,bar,t,e.target.classList.contains('l')?'l':'r');e.preventDefault();e.stopPropagation();const x0=e.clientX,s0=t.start,e0=t.end;let ns=s0,ne=e0;const mv=ev=>{const dd=daysFromX(ev.clientX-x0);ns=addD(s0,dd);ne=addD(e0,dd);bar.style.left=xOf(ns)+'px';showTip(ev.clientX,ev.clientY,fmtShort(ns)+' → '+fmtShort(ne))};const up=()=>{endDrag(mv,up);if(ns===s0){render()}else proposeChange(t,ns,ne)};bindDrag(mv,up)})}
 function startResize(e,bar,t,side){e.preventDefault();e.stopPropagation();const px=PX[zoom],x0=e.clientX,s0=t.start,e0=t.end;let ns=s0,ne=e0;const mv=ev=>{const dd=daysFromX(ev.clientX-x0);if(side==='l'){ns=addD(s0,dd);if(pd(ns)>pd(e0))ns=e0;bar.style.left=xOf(ns)+'px';bar.style.width=Math.max(px*0.6,(diffD(ns,e0)+1)*px)+'px';showTip(ev.clientX,ev.clientY,'start '+fmtShort(ns))}else{ne=addD(e0,dd);if(pd(ne)<pd(s0))ne=s0;bar.style.width=Math.max(px*0.6,(diffD(s0,ne)+1)*px)+'px';showTip(ev.clientX,ev.clientY,'end '+fmtShort(ne))}};const up=()=>{endDrag(mv,up);if(ns===s0&&ne===e0)render();else proposeChange(t,ns,ne)};bindDrag(mv,up)}
 function dragMilestone(ms,t){ms.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const x0=e.clientX,s0=t.start;let ns=s0;const mv=ev=>{ns=addD(s0,daysFromX(ev.clientX-x0));ms.style.left=(xOf(ns)+PX[zoom]/2-7)+'px';showTip(ev.clientX,ev.clientY,fmtShort(ns))};const up=()=>{endDrag(mv,up);if(ns===s0)render();else proposeChange(t,ns,ns)};bindDrag(mv,up)})}
-function dragSummary(bar,t){bar.style.cursor='grab';bar.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const x0=e.clientX,s0=t.start,e0=t.end;let ns=s0,ne=e0;const mv=ev=>{const dd=daysFromX(ev.clientX-x0);ns=addD(s0,dd);ne=addD(e0,dd);bar.style.left=xOf(ns)+'px';showTip(ev.clientX,ev.clientY,fmtShort(ns))};const up=()=>{endDrag(mv,up);if(ns===s0)render();else{t.start=ns;t.end=ne;render()}};bindDrag(mv,up)})}
+function dragSummary(bar,t){bar.style.cursor='grab';bar.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const x0=e.clientX,s0=effStart(t),e0=effEnd(t);if(!s0||!e0)return;let ns=s0,ne=e0;const mv=ev=>{const dd=daysFromX(ev.clientX-x0);ns=addD(s0,dd);ne=addD(e0,dd);bar.style.left=xOf(ns)+'px';showTip(ev.clientX,ev.clientY,fmtShort(ns))};const up=()=>{endDrag(mv,up);if(ns===s0)render();else{t.start=ns;t.end=ne;render()}};bindDrag(mv,up)})}
 
 /* ---- scheduling solver ---- */
-function minStart(predS,predE,type,succDur){ // earliest succ.start (day numbers)
-  if(type==='FS')return predE+1; if(type==='SS')return predS; if(type==='FF')return predE-succDur; if(type==='SF')return predS-succDur; return -1e9;
+function minStart(predS,predE,type,succDur,lag=0){ // earliest succ.start (day numbers)
+  if(type==='FS')return predE+1+lag; if(type==='SS')return predS+lag; if(type==='FF')return predE+lag-succDur; if(type==='SF')return predS+lag-succDur; return -1e9;
 }
-function maxPredStart(succS,succE,type,predDur){ // latest pred.start so succ fits (backward)
-  if(type==='FS')return succS-1-predDur; if(type==='SS')return succS; if(type==='FF')return succE-predDur; if(type==='SF')return succE; return 1e9;
+function maxPredStart(succS,succE,type,predDur,lag=0){ // latest pred.start so succ fits (backward)
+  if(type==='FS')return succS-1-lag-predDur; if(type==='SS')return succS-lag; if(type==='FF')return succE-lag-predDur; if(type==='SF')return succE-lag; return 1e9;
 }
-function topoLeaves(){
-  const nodes=tasks.filter(isLeaf).map(t=>t.id);const set=new Set(nodes);
+function scheduledLeaves(){return tasks.filter(t=>isLeaf(t)&&validDate(t.start)&&validDate(t.milestone?t.start:t.end))}
+function topoLeaves(nodes=scheduledLeaves().map(t=>t.id)){
+  const set=new Set(nodes);
   const indeg={},adj={};nodes.forEach(n=>{indeg[n]=0;adj[n]=[]});
   for(const L of links){if(!set.has(L.from)||!set.has(L.to))continue;adj[L.from].push(L.to);indeg[L.to]++}
   const q=nodes.filter(n=>indeg[n]===0);const order=[];
@@ -901,26 +917,28 @@ function topoLeaves(){
 }
 function computeSchedule(pinId,pinS,pinE){
   const base=rangeStart;const day=s=>diffD(base,s);
-  const order=topoLeaves();if(!order)return{cycle:true};
+  const scheduled=scheduledLeaves();const nodeIds=scheduled.map(t=>t.id);
+  if(!nodeIds.includes(pinId)||!validDate(pinS)||!validDate(pinE))return{cycle:false,affected:[],kickoffHit:[],deadlineHit:[],W:{},base,pinId,pinS,pinE};
+  const order=topoLeaves(nodeIds);if(!order)return{cycle:true};
   const orig={},W={};
-  for(const t of tasks.filter(isLeaf)){orig[t.id]={s:day(t.start),e:day(t.milestone?t.start:t.end),d:dur(t),m:!!t.milestone};W[t.id]={...orig[t.id]}}
+  for(const t of scheduled){orig[t.id]={s:day(t.start),e:day(t.milestone?t.start:t.end),d:dur(t),m:!!t.milestone};W[t.id]={...orig[t.id]}}
   W[pinId]={s:day(pinS),e:day(pinE),d:diffD(pinS,pinE),m:byId(pinId).milestone};
   const preds={},succs={};order.forEach(n=>{preds[n]=[];succs[n]=[]});
   for(const L of links){if(!(L.from in W)||!(L.to in W))continue;preds[L.to].push(L);succs[L.from].push(L)}
-  // forward: push successors later
-  for(const n of order){if(n===pinId)continue;let earliest=orig[n].s;for(const L of preds[n]){const p=W[L.from];earliest=Math.max(earliest,minStart(p.s,p.e,L.type,W[n].d))}W[n]={...W[n],s:earliest,e:earliest+W[n].d}}
-  // backward: if pin violates its predecessors, pull them earlier
-  let pinEarliest=orig[pinId].s;for(const L of preds[pinId]){const p=W[L.from];pinEarliest=Math.max(pinEarliest,minStart(p.s,p.e,L.type,W[pinId].d))}
-  if(W[pinId].s<pinEarliest){
-    for(let i=order.length-1;i>=0;i--){const n=order[i];if(n===pinId)continue;let latest=orig[n].s;for(const L of succs[n]){const s=W[L.to];latest=Math.min(latest,maxPredStart(s.s,s.e,L.type,W[n].d))}if(latest<W[n].s){W[n]={...W[n],s:latest,e:latest+W[n].d}}}
-  }
+  const forward=new Set(),backward=new Set();
+  (function walk(n){for(const L of succs[n])if(!forward.has(L.to)){forward.add(L.to);walk(L.to)}})(pinId);
+  (function walk(n){for(const L of preds[n])if(!backward.has(L.from)){backward.add(L.from);walk(L.from)}})(pinId);
+  // The moved task is pinned. Only its successor closure may move later.
+  for(const n of order){if(!forward.has(n))continue;let earliest=W[n].s;for(const L of preds[n]){const p=W[L.from];earliest=Math.max(earliest,minStart(p.s,p.e,L.type,W[n].d,L.lag||0))}if(earliest>W[n].s)W[n]={...W[n],s:earliest,e:earliest+W[n].d}}
+  // Only its predecessor closure may move earlier. This keeps unrelated chains untouched.
+  for(let i=order.length-1;i>=0;i--){const n=order[i];if(!backward.has(n))continue;let latest=W[n].s;for(const L of succs[n]){const s=W[L.to];latest=Math.min(latest,maxPredStart(s.s,s.e,L.type,W[n].d,L.lag||0))}if(latest<W[n].s)W[n]={...W[n],s:latest,e:latest+W[n].d}}
   // collect affected
   const affected=[];for(const id in W){if(id===pinId)continue;if(W[id].s!==orig[id].s){affected.push({id,oldS:addD(base,orig[id].s),oldE:addD(base,orig[id].e),newS:addD(base,W[id].s),newE:addD(base,W[id].e),dir:W[id].s>orig[id].s?'later':'earlier'})}}
   const kDay=day(kickoff),dDay=day(deadline);
   const kickoffHit=[],deadlineHit=[];
   const checkK=(id,s)=>{if(s<kDay)kickoffHit.push(id)};const checkD=(id,e)=>{if(e>dDay)deadlineHit.push(id)};
   checkK(pinId,W[pinId].s);checkD(pinId,W[pinId].e);affected.forEach(a=>{checkK(a.id,day(a.newS));checkD(a.id,day(a.newE))});
-  return{cycle:false,affected,kickoffHit:[...new Set(kickoffHit)],deadlineHit:[...new Set(deadlineHit)],W,base,pinId,pinS,pinE,pinViolatesPred:W[pinId].s<pinEarliest};
+  return{cycle:false,affected,kickoffHit:[...new Set(kickoffHit)],deadlineHit:[...new Set(deadlineHit)],W,base,pinId,pinS,pinE};
 }
 function applySchedule(res){const base=res.base;for(const id in res.W){const t=byId(id);if(!t)continue;t.start=addD(base,res.W[id].s);if(!t.milestone)t.end=addD(base,res.W[id].e);else t.end=t.start}render()}
 function commitOnly(t,ns,ne){t.start=ns;t.end=ne;if(t.milestone)t.end=ns;render()}
