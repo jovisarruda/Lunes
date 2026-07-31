@@ -3,7 +3,7 @@
 > Registro cronológico de mudanças. Entrada nova sempre no topo.
 > Formato: `AAAA-MM-DD — resumo da mudança`.
 
-## 2026-07-30 (correcoes locais do Gantt, aguardando autorizacao para publicar)
+## 2026-07-30/31 (correcoes e deploy do Gantt)
 - Escopo executado somente em `LunesGantt_prototype.html`; nenhum push, commit ou deploy realizado.
 - **Effort:** numero sem sufixo passa a representar dias; parser aceita `h`, `d`, `w`, `m` e `y`; unidade persistida em `_effortUnit`, preservando itens legados sem unidade como horas.
 - **Edicao de datas:** removido o commit durante o evento intermediario do seletor de data. A alteracao agora termina somente com Enter ou ao sair do campo, eliminando o fechamento ao digitar `0`, o popup prematuro e o bloqueio da segunda tentativa. Aplicado na lista e no Details.
@@ -12,7 +12,7 @@
 - **Push activities:** removido o limite incorreto baseado na posicao original. O solver fixa a atividade movida, propaga para sucessoras a direita e predecessoras a esquerda, limita a alteracao as cadeias conectadas, respeita lag e ignora atividades sem datas validas.
 - **Compatibilidade:** FS/SS/FF/SF mantidos no armazenamento e na UI (equivalentes TI/II/TT/IT).
 - **Teste local concluido no Chrome:** 17/17 verificacoes aprovadas, cobrindo render do prototipo, todas as unidades de effort, rejeicao de unidade invalida, Today local, roll-up da barra de resumo, formulas FS/SS/FF/SF com lag, edicao de data sem `change` prematuro e dois cenarios completos do solver (push apenas da cadeia sucessora e ajuste apenas da cadeia predecessora). Evidencia: `gantt-local-test.html` e `gantt-local-test-result.png`.
-- Publicacao continua bloqueada ate autorizacao explicita do Jovis.
+- **Publicado no GitHub em 2026-07-31:** commit `081aaad` no `main` (`Fix Gantt date effort and scheduling bugs`). GitHub Pages validado em `LunesGantt_prototype.html?v=081aaad`: 18 linhas renderizadas e presenca confirmada de `_effortUnit`, Today dinamico e novo solver de cadeias conectadas.
 
 ## 2026-07-30 (retoques de UX)
 - **Limpeza de UX + FAQ para a Assistente Lunes.** PUBLICADO + VALIDADO AO VIVO (protótipo e index.html).
