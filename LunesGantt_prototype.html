@@ -370,7 +370,7 @@ async function loadFromDB(){
   // dates: if start & finish resolved to same col, split
   if(COL.start&&COL.finish&&COL.start.id===COL.finish.id){const ds=bcols.filter(c=>c.type==='date');COL.start=ds[0];COL.finish=ds[1]||ds[0];}
   const items=ic.data||[];
-  tasks=items.filter(it=>!(it.col_values&&it.col_values._pending)).map(it=>({id:it.id,parent:it.parent_id,name:it.name,code:it.code,start:_cv(it,COL.start&&COL.start.id),end:_cv(it,COL.finish&&COL.finish.id),milestone:!!(it.col_values&&it.col_values._milestone),eff:+_cv(it,COL.effort&&COL.effort.id)||0,effU:(it.col_values&&it.col_values._effortUnit)||'h',person:_cv(it,COL.person&&COL.person.id)||'',status:_cv(it,COL.status&&COL.status.id)||'',cat:_cv(it,COL.category&&COL.category.id)||'',collapsed:false,manualDates:!!(it.col_values&&it.col_values._manualDates),cv:Object.assign({},it.col_values),_group:it.group_id}));
+  tasks=items.filter(it=>!(it.col_values&&it.col_values._pending)).map(it=>({id:it.id,parent:it.parent_id,name:it.name,code:it.code,uid:it.uid,start:_cv(it,COL.start&&COL.start.id),end:_cv(it,COL.finish&&COL.finish.id),milestone:!!(it.col_values&&it.col_values._milestone),eff:+_cv(it,COL.effort&&COL.effort.id)||0,effU:(it.col_values&&it.col_values._effortUnit)||'h',person:_cv(it,COL.person&&COL.person.id)||'',status:_cv(it,COL.status&&COL.status.id)||'',cat:_cv(it,COL.category&&COL.category.id)||'',collapsed:false,manualDates:!!(it.col_values&&it.col_values._manualDates),cv:Object.assign({},it.col_values),_group:it.group_id}));
   links=(lc.data||[]).map(l=>({id:l.id,from:l.from_item,to:l.to_item,type:l.type,lag:l.lag||0}));
   // configurable columns for Details (Status/Category use logical ids; others use real ids)
   columns=[];
@@ -836,6 +836,7 @@ function renderPanel(){
   const sVal=leaf?t.start:effStart(t), eVal=leaf?(t.milestone?t.start:t.end):effEnd(t);
   const editableDates=leaf||t.manualDates;
   let h=field('ID', `<span class="ro">#${t.code!=null?t.code:'—'}</span>`);
+  h+=field('Code', `<span class="ro" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:600;letter-spacing:.5px">${t.uid?escapeHtml(t.uid):'—'}</span>`);
   h+=field('Person', leaf?`<input id="f-person" list="peopleDL" value="${escAttr(t.person||'')}">`:`<span class="ro">— (rolls up)</span>`);
   h+=field('Start', editableDates?`<input type="date" id="f-start" value="${sVal||''}">`:`<span class="ro">${sVal?fmtShort(sVal):'—'}</span>`);
   h+=field('Finish', (editableDates&&!t.milestone)?`<input type="date" id="f-end" value="${eVal||''}">`:`<span class="ro">${t.milestone?'◆ milestone':(eVal?fmtShort(eVal):'—')}</span>`);

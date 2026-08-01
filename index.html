@@ -1434,6 +1434,7 @@ async function renderPanel(){
   }else{
     const cc=it.parent_id?subCols():itemCols();
     body.innerHTML=`<p class="small">Created by ${esc(it.created_by||'?')} · ${new Date(it.created_at).toLocaleString()}</p>`+
+      `<div class="row"><span style="width:110px" class="small">Code</span><span class="small" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:600;letter-spacing:.5px">${esc(it.uid||'—')}</span></div>`+
       cc.map(c=>`<div class="row"><span style="width:110px" class="small">${esc(c.name)}</span>${cellHtml(it,c)}</div>`).join('');
   }
 }
