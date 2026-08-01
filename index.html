@@ -568,11 +568,19 @@ function moveItemDialog(it){
 }
 const groupName=id=>groups.find(g=>g.id===id)?.name||'?';
 async function duplicateItem(it,targetGroup,suffix){
-  const copy={board_id:it.board_id,group_id:targetGroup,parent_id:null,name:it.name+(suffix||' (copy)'),col_values:it.col_values,position:items.length,created_by:myName};
-  const {data}=await sb.from('items').insert(copy).select().single();
-  const subs=subsOf(it.id).map(s=>({board_id:s.board_id,group_id:targetGroup,parent_id:data.id,name:s.name,col_values:s.col_values,position:s.position,created_by:myName}));
-  if(subs.length){const {data:sd}=await sb.from('items').insert(subs).select();items.push(...(sd||[]))}
-  items.push(data);renderView();return data;
+  const root=await cloneNode(it,targetGroup,it.parent_id,suffix||' (copy)');
+  renderView();return root;
+}
+// recursively clone an item and its whole sub-tree (new uids/ids assigned by the DB default)
+async function cloneNode(src,targetGroup,newParent,suffix){
+  const copy={board_id:src.board_id,group_id:targetGroup,parent_id:newParent,name:src.name+(suffix||''),col_values:src.col_values,position:src.position,created_by:myName};
+  const {data,error}=await sb.from('items').insert(copy).select().single();
+  if(error){toast(error.message);return null}
+  items.push(data);
+  for(const ch of subsOf(src.id).slice().sort((a,b)=>(a.position||0)-(b.position||0))){
+    await cloneNode(ch,targetGroup,data.id,'');
+  }
+  return data;
 }
 
 /* ================= FILTERS ================= */
@@ -791,28 +799,18 @@ function renderTable(){
         ${ic.map(c=>`<td>${cellHtml(it,c)}</td>`).join('')}
         <td><button class="icon-btn" onclick="itemMenu(event,'${it.id}')">⋯</button></td></tr>`;
         if(shown){
-          // subitems live in their own nested table → independent, resizable column widths
+          // subitems live in their own nested table → independent, resizable widths; N-level recursive
           html+=`<tr class="subwrap"><td colspan="${ic.length+2}">
             <table class="gtable subtable" style="table-layout:fixed;width:${sw}px">
             <tr><th style="width:${W.s_name||260}px;position:relative">Subitem<span class="rz" onmousedown="rzStart(event,'s_name')"></span></th>
             ${sc.map(c=>`<th style="width:${W['s_'+c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'s_${c.id}')"></span></th>`).join('')}
             <th style="width:40px"></th></tr>`;
-          for(const s of subs.filter(s=>passFilter(s))){
-            if(isPending(s)){html+=ghostSubRow(s,sc);continue}
-            html+=`<tr class="subrow" ondragover="rowOver(event)" ondragleave="rowLeave(event)" ondrop="rowDrop(event,'${s.id}','sub')"><td><div class="iname">
-              <input type="checkbox" class="selbox" ${selected.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${s.id}',this.checked)">
-              <span class="drag" draggable="true" ondragstart="rowDragStart(event,'${s.id}','sub')" ondragend="rowDragEnd(event)" title="Drag to reorder">⠿</span>
-              <span class="nm" data-nm="${s.id}" onclick="nmClick(event,'${s.id}')" ondblclick="startRename(event,'${s.id}')">${esc(s.name)}</span>
-              <button class="nm-edit" title="Rename" onclick="startRename(event,'${s.id}')">✎</button>
-            </div></td>
-            ${sc.map(c=>`<td>${cellHtml(s,c)}</td>`).join('')}
-            <td><button class="icon-btn" style="color:var(--danger)" title="Delete subitem" onclick="deleteItem('${s.id}')">🗑</button></td></tr>`;
-          }
+          html+=subRows(g.id,it.id,0,sc);
           html+=`<tr class="subrow"><td colspan="${sc.length+2}" class="addrow" onclick="promptAdd('${g.id}','${it.id}')">+ Add subitem</td></tr>`;
           html+=`</table></td></tr>`;
         }
       }
-      html+=`<tr><td colspan="${ic.length+2}" class="addrow" onclick="promptAdd('${g.id}',null)">+ Add item</td></tr>`;
+      html+=`<tr ondragover="rowOver(event)" ondragleave="rowLeave(event)" ondrop="groupDrop(event,'${g.id}')"><td colspan="${ic.length+2}" class="addrow" onclick="promptAdd('${g.id}',null)">+ Add item</td></tr>`;
       if(sums.length&&gi.length)html+=`<tr class="sumrow"><td></td>${ic.map(c=>{const s=sums.find(x=>x.c.id===c.id);return `<td>${s?fmtMoney(s.t):''}</td>`}).join('')}<td></td></tr>`;
       html+='</table>';
     }
@@ -879,6 +877,42 @@ function projItemMenu(e,id){
     ['!Delete (with sub-elements)',()=>deleteItem(id)]
   ]);
 }
+/* ===== default board: recursive (N-level) subitem rows ===== */
+function subRows(groupId,parentId,depth,sc){
+  const rows=subsOf(parentId).filter(x=>passFilter(x)).slice().sort((a,b)=>(a.position||0)-(b.position||0));
+  let html='';
+  for(const s of rows){
+    if(isPending(s)){html+=ghostSubRow(s,sc);continue}
+    const kids=subsOf(s.id);
+    const open=collapsed['x'+s.id]||subFiltersActive();
+    const pad=depth*18;
+    html+=`<tr class="subrow" ondragover="rowOver(event)" ondragleave="rowLeave(event)" ondrop="rowDrop(event,'${s.id}','sub')"><td><div class="iname" style="padding-left:${pad}px">
+      <input type="checkbox" class="selbox" ${selected.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${s.id}',this.checked)">
+      <span class="drag" draggable="true" ondragstart="rowDragStart(event,'${s.id}','sub')" ondragend="rowDragEnd(event)" title="Drag to reorder">⠿</span>
+      <button class="exp" onclick="collapsed['x${s.id}']=!collapsed['x${s.id}'];renderView()">${kids.length?(open?'▾':'▸'):'·'}</button>
+      <span class="nm" data-nm="${s.id}" onclick="nmClick(event,'${s.id}')" ondblclick="startRename(event,'${s.id}')">${esc(s.name)}</span>
+      <button class="nm-edit" title="Rename" onclick="startRename(event,'${s.id}')">✎</button>
+      ${kids.length?`<span class="small">${kids.length}</span>`:''}
+    </div></td>
+    ${sc.map(c=>`<td>${cellHtml(s,c)}</td>`).join('')}
+    <td><button class="icon-btn" onclick="subItemMenu(event,'${s.id}')">⋯</button></td></tr>`;
+    if(kids.length&&open){
+      html+=subRows(groupId,s.id,depth+1,sc);
+      html+=`<tr class="subrow"><td colspan="${sc.length+2}" class="addrow" style="padding-left:${(depth+1)*18+30}px" onclick="promptAdd('${groupId}','${s.id}')">+ Add subitem</td></tr>`;
+    }
+  }
+  return html;
+}
+function subItemMenu(e,id){
+  const it=items.find(x=>x.id===id);if(!it)return;
+  menu(e,[
+    ['↳ Add subitem',()=>promptAdd(it.group_id,it.id)],
+    ['+ Add sibling',()=>{const n=prompt('Subitem name:');if(n)createItem(it.group_id,it.parent_id,n)}],
+    ['Open details',()=>openPanel(id)],
+    ['Duplicate',()=>duplicateItem(it,it.group_id)],
+    ['!Delete (with sub-elements)',()=>deleteItem(id)]
+  ]);
+}
 function colW(){try{return JSON.parse(localStorage.getItem('lunes_w_'+curBoard.id)||'{}')}catch(e){return{}}}
 function rzStart(e,key){
   e.preventDefault();e.stopPropagation();
@@ -906,15 +940,42 @@ async function rowDrop(e,targetId,scope){
   if(!ctx||ctx.scope!==scope||ctx.id===targetId)return;
   const dragged=items.find(x=>x.id===ctx.id),target=items.find(x=>x.id===targetId);
   if(!dragged||!target)return;
-  if(scope==='item'&&dragged.group_id!==target.group_id)return;   // reorder only within same group
-  if(scope==='sub'&&dragged.parent_id!==target.parent_id)return;  // reorder only within same parent
-  let list=(scope==='item'?topItems().filter(x=>x.group_id===dragged.group_id):subsOf(dragged.parent_id)).slice().sort((a,b)=>(a.position||0)-(b.position||0));
-  list=list.filter(x=>x.id!==dragged.id);
+  if(scope==='sub'&&dragged.parent_id!==target.parent_id)return;  // subitems: reorder within same parent only
+  let movedGroup=false;
+  if(scope==='item'&&dragged.group_id!==target.group_id){         // drag an item into another group
+    await moveItemToGroup(dragged,target.group_id,false);
+    movedGroup=true;
+  }
+  const gid=movedGroup?target.group_id:dragged.group_id;
+  const list=(scope==='item'?topItems().filter(x=>x.group_id===gid):subsOf(dragged.parent_id)).slice().sort((a,b)=>(a.position||0)-(b.position||0)).filter(x=>x.id!==dragged.id);
   const ti=list.findIndex(x=>x.id===target.id);
   list.splice(ti<0?list.length:ti,0,dragged);   // drop before the target row
   list.forEach((it,i)=>it.position=i);
   renderView();
   await Promise.all(list.map(it=>sb.from('items').update({position:it.position}).eq('id',it.id)));
+}
+async function groupDrop(e,gid){   // drop an item onto a group's "+ Add item" zone → move to end of that group
+  e.preventDefault();e.stopPropagation();
+  e.currentTarget.classList.remove('dragrow');
+  const ctx=dragCtx;dragCtx=null;
+  if(!ctx||ctx.scope!=='item')return;
+  const dragged=items.find(x=>x.id===ctx.id);if(!dragged)return;
+  if(dragged.group_id!==gid)await moveItemToGroup(dragged,gid,false);
+  const list=topItems().filter(x=>x.group_id===gid&&x.id!==dragged.id).slice().sort((a,b)=>(a.position||0)-(b.position||0));
+  list.push(dragged);list.forEach((it,i)=>it.position=i);
+  renderView();
+  await Promise.all(list.map(it=>sb.from('items').update({position:it.position}).eq('id',it.id)));
+}
+// move a top-level item (and its whole sub-tree) to another group
+async function moveItemToGroup(it,gid,doRender){
+  if(it.group_id===gid)return;
+  const old=groupName(it.group_id);
+  const ids=[it.id,...descendantIds(it.id)];
+  it.group_id=gid;
+  for(const d of descendantIds(it.id)){const c=items.find(x=>x.id===d);if(c)c.group_id=gid}
+  await sb.from('items').update({group_id:gid}).in('id',ids);
+  logActivity(it.id,'group',old,groupName(gid));
+  if(doRender)renderView();
 }
 function toggleSel(id,on){if(on)selected.add(id);else selected.delete(id);renderBatchBar()}
 function clearSel(){selected.clear();renderView()}
@@ -925,7 +986,7 @@ function renderBatchBar(){
   const anyPending=[...selected].some(id=>{const it=items.find(x=>x.id===id);return it&&isPending(it)});
   bb.innerHTML=`<b>${selected.size} selected</b>
     ${anyPending?`<button class="btn sm" style="background:var(--ok)" onclick="aiApprove([...selected])">Approve</button>`:''}
-    <button class="btn sm" onclick="batchModify()">Change value</button>
+    <button class="btn sm" onclick="batchModify()">Change</button>
     <button class="btn sm" style="background:var(--danger)" onclick="batchDelete()">Delete</button>
     <button class="btn sm ghost" onclick="clearSel()">Clear</button>`;
 }
@@ -1232,17 +1293,58 @@ async function batchDelete(){
   selected.clear();renderView();toast(ids.length+' deleted');
 }
 function batchModify(){
-  const sel=items.filter(x=>selected.has(x.id));
-  const hasItem=sel.some(x=>!x.parent_id),hasSub=sel.some(x=>x.parent_id);
-  const opts=cols.filter(c=>(c.scope==='item'&&hasItem)||(c.scope==='subitem'&&hasSub));
-  if(!opts.length)return toast('No applicable columns for the selection');
-  overlay(`<h3>Change value — ${selected.size} item(s)</h3>
-    <div class="row"><span class="small" style="width:70px">Column</span>
+  overlay(`<h3>Change — ${selected.size} selected</h3>
+    <div class="row" style="gap:6px;margin-bottom:6px">
+      <button class="btn sm" id="bmt-val" onclick="bmTab('val')">Change value</button>
+      <button class="btn sm ghost" id="bmt-move" onclick="bmTab('move')">Move to group</button>
+      <button class="btn sm ghost" id="bmt-dup" onclick="bmTab('dup')">Duplicate</button>
+    </div>
+    <div id="bmBody"></div>`);
+  bmTab('val');
+}
+function bmTab(t){
+  ['val','move','dup'].forEach(x=>{const b=$('bmt-'+x);if(b)b.className='btn sm'+(x===t?'':' ghost')});
+  const b=$('bmBody');const sel=items.filter(x=>selected.has(x.id));
+  if(t==='val'){
+    const hasItem=sel.some(x=>!x.parent_id),hasSub=sel.some(x=>x.parent_id);
+    const opts=cols.filter(c=>(c.scope==='item'&&hasItem)||(c.scope==='subitem'&&hasSub));
+    if(!opts.length){b.innerHTML='<p class="small">No applicable columns for the selection.</p>';return}
+    b.innerHTML=`<div class="row"><span class="small" style="width:70px">Column</span>
       <select id="bmCol" onchange="bmValueUI()">${opts.map(c=>`<option value="${c.id}">${esc(c.name)} (${c.scope})</option>`).join('')}</select></div>
-    <div class="row"><span class="small" style="width:70px">Value</span><span id="bmVal"></span></div>
-    <p class="small">Applies only to selected rows matching the column's scope.</p>
-    <button class="btn" style="align-self:flex-start" onclick="batchApply()">Apply</button>`);
-  bmValueUI();
+      <div class="row"><span class="small" style="width:70px">Value</span><span id="bmVal"></span></div>
+      <p class="small">Applies only to selected rows matching the column's scope.</p>
+      <button class="btn" style="align-self:flex-start" onclick="batchApply()">Apply</button>`;
+    bmValueUI();
+  }else if(t==='move'){
+    const n=sel.filter(x=>!x.parent_id).length;
+    b.innerHTML=`<div class="row"><span class="small" style="width:70px">Group</span>
+      <select id="bmGroup">${groups.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select></div>
+      <p class="small">Moves the ${n} selected top-level item(s) with their sub-elements. Selected sub-items are ignored.</p>
+      <button class="btn" style="align-self:flex-start" onclick="batchMove()" ${n?'':'disabled'}>Move</button>`;
+  }else{
+    const nItem=sel.filter(x=>!x.parent_id).length,nSub=sel.filter(x=>x.parent_id).length;
+    b.innerHTML=`<p class="small">Duplicates each selected row with its whole sub-tree. Top-level items are copied in place; sub-items are copied as siblings.</p>
+      <p class="small">${nItem} item(s), ${nSub} sub-item(s) selected.</p>
+      <button class="btn" style="align-self:flex-start" onclick="batchDuplicate()">Duplicate ${sel.length} row(s)</button>`;
+  }
+}
+async function batchMove(){
+  const gid=$('bmGroup').value;const tops=items.filter(x=>selected.has(x.id)&&!x.parent_id);
+  if(!tops.length)return toast('No top-level items selected');
+  const g=groups.find(x=>x.id===gid);
+  if(!confirm('Move '+tops.length+' item(s) to "'+(g?g.name:'?')+'"?'))return;
+  let pos=topItems().filter(x=>x.group_id===gid).length;
+  for(const it of tops){await moveItemToGroup(it,gid,false);it.position=pos++;await sb.from('items').update({position:it.position}).eq('id',it.id)}
+  document.querySelector('.overlay')?.remove();
+  selected.clear();renderView();toast('Moved '+tops.length+' item(s)');
+}
+async function batchDuplicate(){
+  const sel=items.filter(x=>selected.has(x.id));
+  if(!sel.length)return;
+  if(!confirm('Duplicate '+sel.length+' row(s) with sub-elements?'))return;
+  for(const it of sel){await cloneNode(it,it.group_id,it.parent_id,' (copy)')}
+  document.querySelector('.overlay')?.remove();
+  selected.clear();renderView();toast('Duplicated '+sel.length+' row(s)');
 }
 function bmValueUI(){
   const c=cols.find(x=>x.id===$('bmCol').value);const w=$('bmVal');
