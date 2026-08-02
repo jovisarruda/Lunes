@@ -693,10 +693,10 @@ function forceManual(e,itemId,colId){
 }
 // clear the value column + manual flag across an entire subtree (used when forcing a manual value up top)
 async function clearSumSubtree(node){
-  const vc=valueColId(node);
   for(const k of subsOf(node.id)){
+    const kvc=valueColId(k); // each child clears ITS OWN value column (subitem scope), not the parent's
     const cv={...k.col_values};let ch=false;
-    if(vc&&cv[vc]!=null&&cv[vc]!==''){cv[vc]='';ch=true}
+    if(kvc&&cv[kvc]!=null&&cv[kvc]!==''){cv[kvc]='';ch=true}
     if(cv._manualSum){delete cv._manualSum;ch=true}
     if(ch){k.col_values=cv;await sb.from('items').update({col_values:cv}).eq('id',k.id)}
     await clearSumSubtree(k);
