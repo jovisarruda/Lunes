@@ -275,7 +275,7 @@ const GROUP_COLORS=['#579bfc','#00c875','#fdab3d','#e2445c','#a25ddc','#037f4c',
 const STATUS_COLORS=['#c4c4c4','#fdab3d','#00c875','#e2445c','#579bfc','#a25ddc','#333333','#ff158a'];
 
 /* ================= STATE ================= */
-let user=null, myName='';
+let user=null, myName='', isAdmin=false;
 let boards=[], curBoard=null, groups=[], cols=[], items=[], automations=[], notifs=[], links=[];
 let view='table', collapsed={}, panelItem=null, panelTab='update';
 
@@ -307,8 +307,10 @@ sb.auth.getSession().then(({data})=>{if(data.session)start(data.session.user)});
 
 async function start(u){
   user=u;myName=u.email.split('@')[0];
+  try{const {data:adm}=await sb.rpc('is_app_admin');isAdmin=!!adm}catch(e){isAdmin=false}
   $('login').style.display='none';$('app').style.display='flex';
   applyNav();
+  const nb=$('newBoardBtn');if(nb)nb.style.display=isAdmin?'':'none'; // board creation is admin-only (RLS)
   await loadBoards();
   await loadNotifs();
   runTimeAutomations();
@@ -407,12 +409,13 @@ async function addBoard(){
   boards.push(data);renderBoardNav();selectBoard(data.id);
 }
 function boardMenu(e){
-  menu(e,[
+  const opts=[
     ['Rename board',async()=>{const n=prompt('New name:',curBoard.name);if(!n)return;await sb.from('boards').update({name:n}).eq('id',curBoard.id);curBoard.name=n;$('boardTitle').textContent=n;renderBoardNav()}],
     ['Add group',async()=>{const n=prompt('Group name:');if(!n)return;const {data}=await sb.from('groups').insert({board_id:curBoard.id,name:n,color:GROUP_COLORS[groups.length%GROUP_COLORS.length],position:groups.length}).select().single();groups.push(data);renderView()}],
-    ['⬇ Download CSV',()=>exportBoardCSV()],
-    ['!Delete board',async()=>{if(!confirm('Delete board "'+curBoard.name+'" and ALL its data?'))return;await sb.from('boards').delete().eq('id',curBoard.id);boards=boards.filter(b=>b.id!==curBoard.id);curBoard=null;loadBoards()}]
-  ]);
+    ['⬇ Download CSV',()=>exportBoardCSV()]
+  ];
+  if(isAdmin)opts.push(['!Delete board',async()=>{if(!confirm('Delete board "'+curBoard.name+'" and ALL its data?'))return;await sb.from('boards').delete().eq('id',curBoard.id);boards=boards.filter(b=>b.id!==curBoard.id);curBoard=null;loadBoards()}]);
+  menu(e,opts);
 }
 /* ===== CSV EXPORT (whole board: groups, items, subitems) ===== */
 function csvEsc(v){v=(v==null?'':String(v));return /[",\n\r;]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
