@@ -1547,17 +1547,17 @@ async function uploadAtt(){
   const f=$('attFile').files[0];if(!f)return toast('Choose a file first');
   if(f.size>15*1024*1024)return toast('Max 15 MB');
   toast('Uploading…');
-  const path=panelItem+'/'+Date.now()+'_'+f.name.replace(/[^\w.\-]/g,'_');
-  const {error}=await sb.storage.from('files').upload(path,f);
-  if(error)return toast(error.message);
-  const {data:{publicUrl}}=sb.storage.from('files').getPublicUrl(path);
-  await sb.from('attachments').insert({item_id:panelItem,name:f.name,path,url:publicUrl,author:myName});
+  // Fase 4 item 8: anexos vão para o Google Drive via Edge Function (service account). `path` guarda o file id do Drive.
+  const fd=new FormData();fd.append('file',f);fd.append('itemId',panelItem);
+  const {data,error}=await sb.functions.invoke('drive-upload',{body:fd});
+  if(error||!data||!data.id)return toast('Upload failed: '+((error&&error.message)||(data&&data.error)||'unknown'));
+  await sb.from('attachments').insert({item_id:panelItem,name:f.name,path:data.id,url:data.url,author:myName});
   logActivity(panelItem,'attachment','',f.name);
   toast('File uploaded');renderPanel();
 }
 async function delAtt(id,path){
   if(!confirm('Delete this file?'))return;
-  await sb.storage.from('files').remove([path]);
+  try{await sb.functions.invoke('drive-upload',{body:{action:'delete',fileId:path}})}catch(e){}
   await sb.from('attachments').delete().eq('id',id);
   renderPanel();
 }
