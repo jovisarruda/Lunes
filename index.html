@@ -343,6 +343,7 @@ async function selectBoard(id){
   if(curBoard.template==='project'){const {data:lk}=await sb.from('links').select('*').eq('board_id',id);links=lk||[]}
   else links=[];
   filters={search:'',cols:{}};fBadge();
+  await loadMirrorSources(); // Etapa 3 (Fase C.2): carrega os boards-fonte das colunas connect p/ os espelhos resolverem
   renderView();
 }
 const itemCols=()=>cols.filter(c=>c.scope==='item');
@@ -749,6 +750,15 @@ function cellHtml(it,col){
     return `<span class="cellv" onclick="choiceMenu(event,'${it.id}','${col.id}')">${v?esc(v):'—'}</span>`;
   }
   if(col.type==='database'){
+    const mode=col.options&&col.options.mode;
+    if(mode==='mirror'){ // Etapa 3: espelho read-only de um campo do item conectado
+      const md=mirrorDisp(it,col);
+      return `<span class="cellv" style="color:#666;cursor:default;font-style:italic" title="Mirror (read-only) — reflects the connected item">${md!==''?esc(md):'—'}</span>`;
+    }
+    if(mode==='connect'){ // Etapa 3: conexão a um item de outro board (guarda o uid, mostra o nome)
+      const nm=connectName(it,col);
+      return `<span class="cellv" onclick="connectMenu(event,'${it.id}','${col.id}')">${nm?esc(nm):'—'}</span>`;
+    }
     return `<span class="cellv" onclick="dbMenu(event,'${it.id}','${col.id}')">${v?esc(v):'—'}</span>`;
   }
   if(col.type==='link')return v?`<a href="${esc(v)}" target="_blank" style="color:var(--accent)">🔗 link</a> <span class="cellv" style="min-width:12px" onclick="editCell(event,'${it.id}','${col.id}')">✎</span>`:`<span class="cellv" onclick="editCell(event,'${it.id}','${col.id}')"></span>`;
@@ -1629,7 +1639,7 @@ function openColumns(){
     <div id="colList"></div>
     <hr><div class="row">
       <input id="ncName" placeholder="Column name" style="flex:1">
-      <select id="ncType"><option>text</option><option>number</option><option>date</option><option>status</option><option>person</option><option>label</option><option>link</option><option>checkbox</option><option>database</option></select>
+      <select id="ncType"><option>text</option><option>number</option><option>date</option><option>status</option><option>person</option><option>label</option><option>link</option><option>checkbox</option><option>database</option><option>connect</option><option>mirror</option></select>
       <button class="btn sm" onclick="addColumn()">Add</button>
     </div>`);
   window._colScope='item';renderColList();
@@ -1646,7 +1656,7 @@ function renderColList(){
       <button class="btn sm ghost" onclick="addLabel('${c.id}')">+ label</button>
       <span class="small" style="width:100%">label order = kanban column order</span></div>`:''}
     ${(c.type==='person'||c.type==='label')?`<div class="chips" style="margin-top:6px">${(c.options.choices||[]).map((ch,i)=>`<span class="chip">${esc(ch)}<button onclick="delChoice('${c.id}',${i})">✕</button></span>`).join('')}<button class="btn sm ghost" onclick="addChoice('${c.id}')">+ add</button></div>`:''}
-    ${c.type==='database'?`<div class="chips" style="margin-top:6px"><span class="small">${c.options.source?('source: <b>'+esc(dbBoardName(c.options.source))+'</b> · field: <b>'+esc(dbFieldName(c.options))+'</b>'):'<i>not configured</i>'}</span><button class="btn sm ghost" onclick="configDbColumn('${c.id}')">⚙ Configure</button></div>`:''}
+    ${c.type==='database'?`<div class="chips" style="margin-top:6px"><span class="small">${dbColInfo(c)}</span><button class="btn sm ghost" onclick="${c.options&&c.options.mode==='mirror'?'configMirrorColumn':'configDbColumn'}('${c.id}')">⚙ Configure</button></div>`:''}
     </span>
     <span style="white-space:nowrap"><button class="icon-btn" title="move up" onclick="moveCol('${c.id}',-1)">↑</button><button class="icon-btn" title="move down" onclick="moveCol('${c.id}',1)">↓</button><button class="icon-btn" title="rename" onclick="renameCol('${c.id}')">✎</button><button class="icon-btn" style="color:var(--danger)" title="delete" onclick="delCol('${c.id}')">🗑</button></span></div>`).join('')||'<p class="small">No columns.</p>';
 }
@@ -1692,12 +1702,18 @@ async function addChoice(colId){
 }
 async function addColumn(){
   const name=$('ncName').value.trim();if(!name)return;
-  const type=$('ncType').value;
-  const options=type==='status'?{labels:[{name:'To Do',color:'#c4c4c4'},{name:'Working on it',color:'#fdab3d'},{name:'Done',color:'#00c875'}]}:(type==='person'||type==='label')?{choices:[]}:{};
+  const sel=$('ncType').value;
+  // Etapa 3: connect/mirror são armazenados como type='database' (sem nova CHECK constraint) via options.mode
+  let type=sel, options={};
+  if(sel==='status')options={labels:[{name:'To Do',color:'#c4c4c4'},{name:'Working on it',color:'#fdab3d'},{name:'Done',color:'#00c875'}]};
+  else if(sel==='person'||sel==='label')options={choices:[]};
+  else if(sel==='connect'){type='database';options={mode:'connect'};}
+  else if(sel==='mirror'){type='database';options={mode:'mirror'};}
   const {data,error}=await sb.from('board_columns').insert({board_id:curBoard.id,scope:window._colScope,name,type,options,position:cols.filter(c=>c.scope===window._colScope).length}).select().single();
   if(error)return toast(error.message);
   cols.push(data);$('ncName').value='';renderColList();renderView();
-  if(type==='database')configDbColumn(data.id); // Etapa 2 (Fase C.1): pick source board + field right away
+  if(sel==='database'||sel==='connect')configDbColumn(data.id); // escolher board-fonte
+  else if(sel==='mirror')configMirrorColumn(data.id);            // escolher conexão + campo
 }
 
 /* ================= DATABASE COLUMNS (Etapa 2 / Fase C.1) =================
@@ -1711,19 +1727,20 @@ function dbFieldName(opts){if(!opts||!opts.field)return 'Name';if(opts.field==='
 async function configDbColumn(colId){
   const c=cols.find(x=>x.id===colId);if(!c)return;
   window._dbCfgCol=colId;
+  const isConnect=c.options&&c.options.mode==='connect';
   // list candidate source boards (Database | * first, then the rest), excluding the current board
   const cand=boards.filter(b=>b.id!==curBoard.id).sort((a,b)=>(b.name.startsWith('Database')?1:0)-(a.name.startsWith('Database')?1:0));
-  overlay(`<h3>Database column — ${esc(c.name)}</h3>
-    <div class="row"><span class="small" style="width:90px">Call board</span>
+  overlay(`<h3>${isConnect?'Connect':'Database'} column — ${esc(c.name)}</h3>
+    <div class="row"><span class="small" style="width:90px">${isConnect?'Connect to':'Call board'}</span>
       <select id="dbSrc" onchange="dbLoadFields()"><option value="">— choose a board —</option>${cand.map(b=>`<option value="${b.id}" ${c.options.source===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}</select></div>
-    <div class="row"><span class="small" style="width:90px">Show field</span>
-      <select id="dbField"><option value="_name">Name</option></select></div>
-    <p class="small">The chosen field of that board becomes this column's dropdown.</p>
+    ${isConnect?'':`<div class="row"><span class="small" style="width:90px">Show field</span>
+      <select id="dbField"><option value="_name">Name</option></select></div>`}
+    <p class="small">${isConnect?'Links each item to an item of that board (shows its Name). Add Mirror columns to bring its fields.':'The chosen field of that board becomes this column\'s dropdown.'}</p>
     <button class="btn sm" style="align-self:flex-start" onclick="saveDbColumn('${c.id}')">Save</button>`);
-  await dbLoadFields();
+  if(!isConnect)await dbLoadFields();
 }
 async function dbLoadFields(){
-  const sel=$('dbSrc');if(!sel)return;const bid=sel.value;const fsel=$('dbField');
+  const sel=$('dbSrc');if(!sel)return;const bid=sel.value;const fsel=$('dbField');if(!fsel)return;
   const cur=cols.find(x=>x.id===window._dbCfgCol);
   let opts='<option value="_name">Name</option>';
   if(bid){
@@ -1736,12 +1753,13 @@ async function dbLoadFields(){
 async function saveDbColumn(colId){
   const c=cols.find(x=>x.id===colId);if(!c)return;
   const source=$('dbSrc').value||null;
-  const fsel=$('dbField');const field=fsel.value||'_name';
-  const fieldName=field==='_name'?'Name':(fsel.options[fsel.selectedIndex]?.text||'');
+  const fsel=$('dbField');const field=fsel?(fsel.value||'_name'):'_name';
+  const fieldName=field==='_name'?'Name':(fsel&&fsel.options[fsel.selectedIndex]?fsel.options[fsel.selectedIndex].text:'');
   c.options={...c.options,source,field,fieldName};
   delete dbCache[source]; // force reload
   await sb.from('board_columns').update({options:c.options}).eq('id',colId);
   document.querySelector('.overlay')?.remove();
+  await loadMirrorSources(); // Etapa 3: connect columns precisam do cache do board-fonte
   renderColList();renderView();
 }
 // load the configured field values from the source board (cached per board+field)
@@ -1753,6 +1771,108 @@ async function dbValues(col){
   const field=col.options.field||'_name';
   const list=(data||[]).filter(it=>!isPending(it)).map(it=>({uid:it.uid,val:field==='_name'?it.name:(it.col_values?.[field]??'')})).filter(o=>o.val!==''&&o.val!=null);
   dbCache[key]=list;return list;
+}
+
+/* ================= CONNECT + MIRROR (Etapa 3 / Fase C.2) =================
+   Reaproveita type='database' (sem nova CHECK constraint) via options.mode:
+   - mode:'connect' -> options={mode:'connect', source:<boardId>}. A célula guarda
+     o UID do item-fonte (texto) e exibe o NOME dele. Escolha via connectMenu.
+   - mode:'mirror'  -> options={mode:'mirror', connectCol:<colId>, field:'_name'|<srcColId>, fieldName}.
+     Célula read-only: acha o item conectado (pela coluna connect) e mostra o campo
+     escolhido do board-fonte. Reflete a fonte (recarregado a cada abertura do board). */
+let mirrorSrc={}; // boardId -> { uid(str): item }  dos boards-fonte conectados
+async function loadMirrorSources(){
+  mirrorSrc={};
+  const srcIds=[...new Set(cols.filter(c=>c.type==='database'&&c.options&&c.options.mode==='connect'&&c.options.source).map(c=>c.options.source))];
+  for(const bid of srcIds){
+    const {data}=await sb.from('items').select('*').eq('board_id',bid);
+    const map={};(data||[]).forEach(it=>{map[String(it.uid)]=it});
+    mirrorSrc[bid]=map;
+  }
+}
+function connectSrcItem(it,connectCol){
+  if(!connectCol||!connectCol.options)return null;
+  const uid=it.col_values[connectCol.id];const src=connectCol.options.source;
+  if(uid==null||uid===''||!src)return null;
+  const m=mirrorSrc[src];return m?(m[String(uid)]||null):null;
+}
+function connectName(it,col){
+  const uid=it.col_values[col.id];if(uid==null||uid==='')return '';
+  const si=connectSrcItem(it,col);return si?si.name:('#'+uid);
+}
+function mirrorDisp(it,col){
+  const cc=cols.find(c=>c.id===(col.options&&col.options.connectCol));
+  const si=connectSrcItem(it,cc);if(!si)return '';
+  const f=(col.options&&col.options.field)||'_name';
+  const raw=f==='_name'?si.name:(si.col_values&&si.col_values[f]!=null?si.col_values[f]:'');
+  return raw==null?'':String(raw);
+}
+async function connectMenu(e,itemId,colId){
+  e.stopPropagation();
+  document.querySelectorAll('.menu').forEach(m=>m.remove());
+  const col=cols.find(c=>c.id===colId);
+  if(!col.options||!col.options.source){toast('Configure this Connect column first (Columns → ⚙)');return}
+  const m=document.createElement('div');m.className='menu';m.style.minWidth='240px';
+  const inp=document.createElement('input');inp.placeholder='Find…';inp.style.margin='4px';
+  const list=document.createElement('div');list.style.maxHeight='260px';list.style.overflow='auto';list.style.display='flex';list.style.flexDirection='column';
+  m.appendChild(inp);m.appendChild(list);
+  const vals=await dbValues({options:{source:col.options.source,field:'_name'}}); // [{uid,val=name}]
+  const draw=()=>{
+    const q=inp.value.trim().toLowerCase();list.innerHTML='';
+    vals.filter(o=>String(o.val).toLowerCase().includes(q)).slice(0,200).forEach(o=>{
+      const b=document.createElement('button');b.textContent=o.val;b.onclick=()=>{close();setCell(itemId,colId,String(o.uid))};list.appendChild(b);
+    });
+    if(!vals.length){const p=document.createElement('div');p.className='small';p.style.padding='6px';p.textContent='Source board has no items yet.';list.appendChild(p)}
+    const clr=document.createElement('button');clr.textContent='— clear';clr.className='danger';clr.onclick=()=>{close();setCell(itemId,colId,'')};list.appendChild(clr);
+  };
+  const closer=ev=>{if(!m.contains(ev.target))close()};
+  const close=()=>{m.remove();document.removeEventListener('mousedown',closer)};
+  inp.addEventListener('input',draw);
+  inp.addEventListener('keydown',ev=>{if(ev.key==='Enter'){const f=list.querySelector('button');if(f)f.click()}if(ev.key==='Escape')close()});
+  draw();document.body.appendChild(m);
+  const r=e.target.getBoundingClientRect();m.style.left=Math.min(r.left,innerWidth-260)+'px';m.style.top=(r.bottom+4)+'px';
+  setTimeout(()=>document.addEventListener('mousedown',closer),0);inp.focus();
+}
+function dbColInfo(c){
+  const o=c.options||{};
+  if(o.mode==='connect')return o.source?('connect → <b>'+esc(dbBoardName(o.source))+'</b>'):'<i>connect not configured</i>';
+  if(o.mode==='mirror'){const cc=cols.find(x=>x.id===o.connectCol);return cc?('mirror of <b>'+esc(dbFieldName(o))+'</b> via <b>'+esc(cc.name)+'</b>'):'<i>mirror not configured</i>';}
+  return o.source?('source: <b>'+esc(dbBoardName(o.source))+'</b> · field: <b>'+esc(dbFieldName(o))+'</b>'):'<i>not configured</i>';
+}
+async function configMirrorColumn(colId){
+  const c=cols.find(x=>x.id===colId);if(!c)return;
+  window._mirCfgCol=colId;
+  const connects=cols.filter(x=>x.type==='database'&&x.options&&x.options.mode==='connect'&&x.scope===c.scope);
+  overlay(`<h3>Mirror column — ${esc(c.name)}</h3>
+    <div class="row"><span class="small" style="width:120px">Through connection</span>
+      <select id="mirConn" onchange="mirLoadFields()"><option value="">— choose a connect column —</option>${connects.map(cc=>`<option value="${cc.id}" ${c.options.connectCol===cc.id?'selected':''}>${esc(cc.name)}</option>`).join('')}</select></div>
+    <div class="row"><span class="small" style="width:120px">Mirror field</span>
+      <select id="mirField"><option value="_name">Name</option></select></div>
+    <p class="small">${connects.length?'Shows a field from the item connected through the chosen connection. Read-only; reflects the source.':'⚠ Create a Connect column on this board first.'}</p>
+    <button class="btn sm" style="align-self:flex-start" onclick="saveMirrorColumn('${c.id}')">Save</button>`);
+  await mirLoadFields();
+}
+async function mirLoadFields(){
+  const sel=$('mirConn');if(!sel)return;const cc=cols.find(x=>x.id===sel.value);const fsel=$('mirField');if(!fsel)return;
+  const cur=cols.find(x=>x.id===window._mirCfgCol);
+  let opts='<option value="_name">Name</option>';
+  if(cc&&cc.options&&cc.options.source){
+    const {data}=await sb.from('board_columns').select('*').eq('board_id',cc.options.source).eq('scope','item').order('position');
+    for(const col of (data||[]))opts+=`<option value="${col.id}">${esc(col.name)}</option>`;
+  }
+  fsel.innerHTML=opts;
+  if(cur&&cur.options&&cur.options.field)fsel.value=cur.options.field;
+}
+async function saveMirrorColumn(colId){
+  const c=cols.find(x=>x.id===colId);if(!c)return;
+  const connectCol=$('mirConn').value||null;
+  const fsel=$('mirField');const field=fsel?fsel.value:'_name';
+  const fieldName=field==='_name'?'Name':(fsel&&fsel.options[fsel.selectedIndex]?fsel.options[fsel.selectedIndex].text:'');
+  c.options={...c.options,mode:'mirror',connectCol,field,fieldName};
+  await sb.from('board_columns').update({options:c.options}).eq('id',colId);
+  document.querySelector('.overlay')?.remove();
+  await loadMirrorSources();
+  renderColList();renderView();
 }
 async function dbMenu(e,itemId,colId){
   e.stopPropagation();
