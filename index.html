@@ -88,6 +88,30 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .addrow:hover{color:var(--accent)}
 .gsum{font-size:12px;color:var(--muted);font-weight:500;margin-left:4px}
 
+/* Proporção retrato/quadrada (largura <= altura), em qualquer aparelho: compacta um pouco
+   a barra superior, filtros e a TABELA (itens padrão) para melhorar a visualização.
+   Não altera o Gantt (nada aqui usa as classes do gantt). */
+@media (max-aspect-ratio: 1/1){
+  #topbar{padding:8px 10px;gap:6px}
+  #boardTitle{font-size:16px}
+  .tabs button{padding:4px 8px;font-size:12px}
+  #topRight{gap:6px}
+  #filterbar{padding:8px 10px;gap:6px}
+  #filterbar input,#filterbar select{font-size:12px;padding:4px 6px}
+  #content{padding:0 8px 40px}
+  .group{margin-top:16px}
+  .group-head h3{font-size:14px}
+  .gtable th{padding:5px 6px;font-size:11px}
+  .gtable td{padding:4px 6px;font-size:12.5px}
+  .gtable .status-chip{min-width:52px;font-size:11px;padding:2px 6px}
+  .gtable .cellv{min-width:26px;padding:1px 3px}
+  .gtable .iname{gap:4px}
+  .gtable .iname .exp{width:14px}
+  .gtable .icon-btn,.group-head .icon-btn{font-size:13px;padding:2px}
+  .subwrap>td{padding-left:16px}
+  .subhead td,.subtable th{font-size:11px;padding:4px 6px}
+}
+
 /* kanban */
 #kanban{display:flex;gap:14px;align-items:flex-start;padding-top:18px;overflow-x:auto}
 .kcol{background:#eef0f6;border-radius:10px;min-width:250px;width:250px;padding:10px;flex-shrink:0}
@@ -280,7 +304,8 @@ let user=null, myName='', isAdmin=false;
 let boards=[], curBoard=null, groups=[], cols=[], items=[], automations=[], notifs=[], links=[];
 let view='table', collapsed={}, panelItem=null, panelTab='update';
 // A1 (Etapa 0): boards de teste — mostram um badge "TEST" no título (dados/config temporários).
-const TEST_BOARDS=['FIN | Purchase','FIN | Income'];
+// Purchase e Income saíram de teste (dados/config oficiais).
+const TEST_BOARDS=[];
 function setBoardTitle(name){const el=$('boardTitle');if(!el)return;el.innerHTML=esc(name)+(TEST_BOARDS.includes(name)?' <span class="test-badge" title="Test board — data and settings are temporary">TEST</span>':'')}
 
 const $=id=>document.getElementById(id);
