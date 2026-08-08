@@ -863,7 +863,8 @@ function renderTable(){
           <button class="exp" onclick="collapsed['x${it.id}']=!collapsed['x${it.id}'];renderView()">${subs.length?(shown?'▾':'▸'):'·'}</button>
           <span class="nm" data-nm="${it.id}" onclick="nmClick(event,'${it.id}')" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
           <button class="nm-edit" title="Rename" onclick="startRename(event,'${it.id}')">✎</button>
-          ${subs.length?`<span class="small">${subs.length}</span><input type="checkbox" class="selbox" title="Select this item's subitems" ${subtreeAllSelected(it.id)?'checked':''} onclick="event.stopPropagation();toggleSubtreeSel('${it.id}',this.checked)">`:''}
+          <button class="nm-edit" title="Add subitem" onclick="event.stopPropagation();promptAdd('${g.id}','${it.id}')">＋</button>
+          ${subs.length?`<span class="small">${subs.length}</span>`:''}
         </div></td>
         ${ic.map(c=>`<td>${cellHtml(it,c)}</td>`).join('')}
         <td><button class="icon-btn" onclick="itemMenu(event,'${it.id}')">⋯</button></td></tr>`;
@@ -871,7 +872,7 @@ function renderTable(){
           // subitems live in their own nested table → independent, resizable widths; N-level recursive
           html+=`<tr class="subwrap"><td colspan="${ic.length+2}">
             <table class="gtable subtable" style="table-layout:fixed;width:${sw}px">
-            <tr><th style="width:${W.s_name||260}px;position:relative">Subitem<span class="rz" onmousedown="rzStart(event,'s_name')"></span></th>
+            <tr><th style="width:${W.s_name||260}px;position:relative"><input type="checkbox" class="selbox" title="Select all subitems of this item" ${subtreeAllSelected(it.id)?'checked':''} onclick="event.stopPropagation();toggleSubtreeSel('${it.id}',this.checked)"> Subitem<span class="rz" onmousedown="rzStart(event,'s_name')"></span></th>
             ${sc.map(c=>`<th style="width:${W['s_'+c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'s_${c.id}')"></span></th>`).join('')}
             <th style="width:40px"></th></tr>`;
           html+=subRows(g.id,it.id,0,sc);
@@ -927,6 +928,7 @@ function projRows(groupId,parentId,depth,ic){
       <button class="exp" onclick="collapsed['x${it.id}']=!collapsed['x${it.id}'];renderView()">${kids.length?(open?'▾':'▸'):'·'}</button>
       <span class="nm" data-nm="${it.id}" onclick="nmClick(event,'${it.id}')" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
       <button class="nm-edit" title="Rename" onclick="startRename(event,'${it.id}')">✎</button>
+      <button class="nm-edit" title="Add sub-element" onclick="event.stopPropagation();promptAdd('${groupId}','${it.id}')">＋</button>
       ${kids.length?`<span class="small">${kids.length}</span>`:''}
     </div></td>
     ${ic.map(c=>`<td>${cellHtml(it,c)}</td>`).join('')}
@@ -962,6 +964,7 @@ function subRows(groupId,parentId,depth,sc){
       <button class="exp" onclick="collapsed['x${s.id}']=!collapsed['x${s.id}'];renderView()">${kids.length?(open?'▾':'▸'):'·'}</button>
       <span class="nm" data-nm="${s.id}" onclick="nmClick(event,'${s.id}')" ondblclick="startRename(event,'${s.id}')">${esc(s.name)}</span>
       <button class="nm-edit" title="Rename" onclick="startRename(event,'${s.id}')">✎</button>
+      <button class="nm-edit" title="Add subitem" onclick="event.stopPropagation();promptAdd('${groupId}','${s.id}')">＋</button>
       ${kids.length?`<span class="small">${kids.length}</span><input type="checkbox" class="selbox" title="Select this subitem's subitems" ${subtreeAllSelected(s.id)?'checked':''} onclick="event.stopPropagation();toggleSubtreeSel('${s.id}',this.checked)">`:''}
     </div></td>
     ${sc.map(c=>`<td>${cellHtml(s,c)}</td>`).join('')}
