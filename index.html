@@ -863,7 +863,7 @@ function renderTable(){
           <button class="exp" onclick="collapsed['x${it.id}']=!collapsed['x${it.id}'];renderView()">${subs.length?(shown?'▾':'▸'):'·'}</button>
           <span class="nm" data-nm="${it.id}" onclick="nmClick(event,'${it.id}')" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
           <button class="nm-edit" title="Rename" onclick="startRename(event,'${it.id}')">✎</button>
-          ${subs.length?`<span class="small">${subs.length}</span>`:''}
+          ${subs.length?`<span class="small">${subs.length}</span><input type="checkbox" class="selbox" title="Select this item's subitems" ${subtreeAllSelected(it.id)?'checked':''} onclick="event.stopPropagation();toggleSubtreeSel('${it.id}',this.checked)">`:''}
         </div></td>
         ${ic.map(c=>`<td>${cellHtml(it,c)}</td>`).join('')}
         <td><button class="icon-btn" onclick="itemMenu(event,'${it.id}')">⋯</button></td></tr>`;
@@ -962,7 +962,7 @@ function subRows(groupId,parentId,depth,sc){
       <button class="exp" onclick="collapsed['x${s.id}']=!collapsed['x${s.id}'];renderView()">${kids.length?(open?'▾':'▸'):'·'}</button>
       <span class="nm" data-nm="${s.id}" onclick="nmClick(event,'${s.id}')" ondblclick="startRename(event,'${s.id}')">${esc(s.name)}</span>
       <button class="nm-edit" title="Rename" onclick="startRename(event,'${s.id}')">✎</button>
-      ${kids.length?`<span class="small">${kids.length}</span>`:''}
+      ${kids.length?`<span class="small">${kids.length}</span><input type="checkbox" class="selbox" title="Select this subitem's subitems" ${subtreeAllSelected(s.id)?'checked':''} onclick="event.stopPropagation();toggleSubtreeSel('${s.id}',this.checked)">`:''}
     </div></td>
     ${sc.map(c=>`<td>${cellHtml(s,c)}</td>`).join('')}
     <td><button class="icon-btn" onclick="subItemMenu(event,'${s.id}')">⋯</button></td></tr>`;
@@ -1051,6 +1051,9 @@ function toggleSel(id,on){if(on)selected.add(id);else selected.delete(id);render
 function groupItemIds(gid){const out=[];const top=topItems().filter(x=>x.group_id===gid&&itemVisible(x));const rec=it=>{out.push(it.id);subsOf(it.id).forEach(rec)};top.forEach(rec);return out}
 function groupAllSelected(gid){const ids=groupItemIds(gid);return ids.length>0&&ids.every(id=>selected.has(id))}
 function toggleGroupSel(gid,on){const ids=groupItemIds(gid);ids.forEach(id=>{if(on)selected.add(id);else selected.delete(id)});renderView()}
+function subtreeSubIds(id){const out=[];const rec=s=>{out.push(s.id);subsOf(s.id).forEach(rec)};subsOf(id).forEach(rec);return out}
+function subtreeAllSelected(id){const ids=subtreeSubIds(id);return ids.length>0&&ids.every(x=>selected.has(x))}
+function toggleSubtreeSel(id,on){const ids=subtreeSubIds(id);ids.forEach(x=>{if(on)selected.add(x);else selected.delete(x)});renderView()}
 function clearSel(){selected.clear();renderView()}
 function renderBatchBar(){
   let bb=document.getElementById('batchbar');
