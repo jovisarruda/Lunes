@@ -52,6 +52,8 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 #topRight{margin-left:auto;display:flex;align-items:center;gap:8px}
 #bell{position:relative}
 #bellCount{position:absolute;top:-2px;right:-2px;background:var(--danger);color:#fff;border-radius:9px;font-size:10px;padding:1px 5px;font-weight:700;display:none}
+#viewMenuBtn,#toolsMenuBtn{display:none}
+#toolsBellCount{color:var(--danger);font-weight:700;font-size:11px;margin-left:3px}
 
 /* filter bar */
 #filterbar{display:flex;gap:8px;align-items:center;padding:10px 20px;flex-wrap:wrap}
@@ -92,9 +94,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
    a barra superior, filtros e a TABELA (itens padrão) para melhorar a visualização.
    Não altera o Gantt (nada aqui usa as classes do gantt). */
 @media (max-aspect-ratio: 1/1){
-  #topbar{padding:8px 10px;gap:6px}
+  #topbar{padding:8px 10px;gap:6px;flex-wrap:wrap}
   #boardTitle{font-size:16px}
-  .tabs button{padding:4px 8px;font-size:12px}
+  /* junta as abas num só botão-menu e os ícones (filter/columns/automate/sino) noutro */
+  .tabs{display:none}
+  #topRight > button:not(#toolsMenuBtn){display:none}
+  #viewMenuBtn,#toolsMenuBtn{display:inline-flex}
   #topRight{gap:6px}
   #filterbar{padding:8px 10px;gap:6px}
   #filterbar input,#filterbar select{font-size:12px;padding:4px 6px}
@@ -273,11 +278,13 @@ table.wlt td.over{background:#fdecef;color:#b02a3c;font-weight:600}
         <button id="tab-workload" onclick="setView('workload')" style="display:none">Workload</button>
         <button id="tab-aiinput" onclick="setView('aiinput')">✨ AI Input<span id="aiCount"></span></button>
       </div>
+      <button id="viewMenuBtn" class="btn sm ghost" onclick="viewMenu(event)">▤ View ▾</button>
       <div id="topRight">
         <button class="btn sm ghost" onclick="openFilters()">⚲ Filter<span id="fBadge"></span></button>
         <button class="btn sm ghost" onclick="openColumns()">⚙ Columns</button>
         <button class="btn sm ghost" onclick="openAutomations()">⚡ Automate</button>
         <button class="icon-btn" id="bell" onclick="openNotifs(event)">🔔<span id="bellCount"></span></button>
+        <button id="toolsMenuBtn" class="btn sm ghost" onclick="toolsMenu(event)">⚲⚙⚡ Menu<span id="toolsBellCount"></span></button>
       </div>
     </div>
     <div id="content" style="padding-top:6px"></div>
@@ -739,6 +746,22 @@ async function resumeSum(itemId){
 
 /* ================= VIEWS ================= */
 function setView(v){view=v;renderView()}
+// portrait/compact: single dropdown for the view tabs
+function viewMenu(e){
+  const btns=[...document.querySelectorAll('#topbar .tabs button')].filter(b=>b.style.display!=='none');
+  const opts=btns.map(b=>[(b.textContent||b.id).replace(/\s+/g,' ').trim(),()=>setView(b.id.replace('tab-',''))]);
+  menu(e,opts.length?opts:[['Table',()=>setView('table')]]);
+}
+// portrait/compact: single dropdown for the toolbar actions (filter/columns/automate/notifications)
+function toolsMenu(e){
+  const unread=(notifs||[]).filter(n=>!n.read).length;
+  menu(e,[
+    ['⚲ Filter',()=>openFilters()],
+    ['⚙ Columns',()=>openColumns()],
+    ['⚡ Automate',()=>openAutomations()],
+    ['🔔 Notifications'+(unread?' ('+unread+')':''),()=>openNotifs(e)]
+  ]);
+}
 function renderView(){
   if(!curBoard)return;
   updateAiCount();
