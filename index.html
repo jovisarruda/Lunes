@@ -2037,6 +2037,8 @@ function describeAuto(a){
   else if(t.type==='date_arrives')s+=`<b>${esc(cn(t.colId))}</b> arrives`;
   else if(t.type==='monthly')s+=`every month day ${t.day} (group <b>${esc(gn(t.groupId))}</b>)`;
   else s+='item is created';
+  if(t.inGroup)s+=` <span class="small">(only in <b>${esc(gn(t.inGroup))}</b>)</span>`;
+  if(t.ifStatus&&t.ifStatus.colId)s+=` <span class="small">(only if <b>${esc(cn(t.ifStatus.colId))}</b> ∈ ${esc((t.ifStatus.values||[]).join(', '))})</span>`;
   s+=', then ';
   if(ac.type==='move_group')s+=`move to <b>${esc(gn(ac.groupId))}</b>`;
   else if(ac.type==='set_column')s+=`set <b>${esc(cn(ac.colId))}</b> = "${esc(ac.value)}"`;
@@ -2075,22 +2077,31 @@ function notifMsg(a,it,bName,colsArr,parentName){
   const nm=(parentName?parentName+' / ':'')+(it.parent_id?'↳ ':'')+it.name;
   return '⚡ '+nm+': '+trigText(a,colsArr)+(a.action.message?' — '+a.action.message:'')+' ('+bName+')';
 }
+// a notify action's email may list several recipients (comma/semicolon separated)
+function splitEmails(s){return String(s||'').split(/[,;]+/).map(x=>x.trim()).filter(Boolean)}
 async function execAction(a,it){
   const ac=a.action;
   if(ac.type==='move_group'&&!it.parent_id){await updateItem(it,{group_id:ac.groupId},'group',groupName(it.group_id),groupName(ac.groupId))}
   else if(ac.type==='set_column'){const old=it.col_values[ac.colId]??'';it.col_values={...it.col_values,[ac.colId]:ac.value};await updateItem(it,{col_values:it.col_values},cols.find(c=>c.id===ac.colId)?.name||'column',old,ac.value)}
   else if(ac.type==='duplicate'){await duplicateItem(it,ac.groupId,' | '+new Date().toLocaleDateString('en',{month:'short',year:'numeric'}))}
   else if(ac.type==='archive'){await updateItem(it,{archived:true});items=items.filter(x=>x.id!==it.id&&x.parent_id!==it.id)}
-  else if(ac.type==='notify'){const pn=it.parent_id?items.find(x=>x.id===it.parent_id)?.name:null;await sb.from('notifications').insert({user_email:ac.email,message:notifMsg(a,it,curBoard.name,cols,pn),board_id:it.board_id,item_id:it.id})}
+  else if(ac.type==='notify'){const pn=it.parent_id?items.find(x=>x.id===it.parent_id)?.name:null;const msg=notifMsg(a,it,curBoard.name,cols,pn);for(const em of splitEmails(ac.email))await sb.from('notifications').insert({user_email:em,message:msg,board_id:it.board_id,item_id:it.id})}
   await autoLog(it.board_id,a.id,it.id,'Rule ['+describeAuto(a).replace(/<[^>]+>/g,'')+'] ran on "'+it.name+'"');
 }
 async function runAutomations(evType,it,ctx){
   for(const a of automations.filter(a=>a.enabled&&a.trigger.type===evType)){
     const t=a.trigger;
     if(evType==='status_changes'&&(t.colId!==ctx.colId||String(t.value)!==String(ctx.value)))continue;
+    if(!autoCondOk(t,it))continue;
     await execAction(a,it);
   }
   renderView();
+}
+// optional conditions on a trigger: only-if-in-group and only-if-status
+function autoCondOk(t,it){
+  if(t.inGroup&&it.group_id!==t.inGroup)return false;
+  if(t.ifStatus&&t.ifStatus.colId){const cv=it.col_values?.[t.ifStatus.colId];if(!(t.ifStatus.values||[]).map(String).includes(String(cv)))return false}
+  return true;
 }
 async function runTimeAutomations(){
   // runs across ALL boards on app load
@@ -2119,6 +2130,7 @@ async function runTimeAutomations(){
         if(!dv||dv>today)continue;
         const done=it.col_values['_auto_'+a.id];
         if(done)continue;
+        if(!autoCondOk(t,it))continue;
         await execTimeAction(a,it,allBoards,allGroups,allCols,allItems);
         it.col_values={...it.col_values,['_auto_'+a.id]:today};
         await sb.from('items').update({col_values:it.col_values}).eq('id',it.id);
@@ -2162,7 +2174,7 @@ async function execTimeAction(a,it,allBoards,allGroups,allCols,allItems){
   if(ac.type==='move_group'&&!it.parent_id)await sb.from('items').update({group_id:ac.groupId}).eq('id',it.id);
   else if(ac.type==='set_column'){const cv={...it.col_values,[ac.colId]:ac.value};it.col_values=cv;await sb.from('items').update({col_values:cv}).eq('id',it.id)}
   else if(ac.type==='archive')await sb.from('items').update({archived:true}).eq('id',it.id);
-  else if(ac.type==='notify'){const pn=it.parent_id?(allItems||[]).find(x=>x.id===it.parent_id)?.name:null;const bCols=(allCols||[]).filter(c=>c.board_id===it.board_id);await sb.from('notifications').insert({user_email:ac.email,message:notifMsg(a,it,bName,bCols,pn),board_id:it.board_id,item_id:it.id})}
+  else if(ac.type==='notify'){const pn=it.parent_id?(allItems||[]).find(x=>x.id===it.parent_id)?.name:null;const bCols=(allCols||[]).filter(c=>c.board_id===it.board_id);const msg=notifMsg(a,it,bName,bCols,pn);for(const em of splitEmails(ac.email))await sb.from('notifications').insert({user_email:em,message:msg,board_id:it.board_id,item_id:it.id})}
   else if(ac.type==='duplicate'){
     const suffix=' | '+new Date().toLocaleDateString('en',{month:'short',year:'numeric'});
     const {data:ni}=await sb.from('items').insert({board_id:it.board_id,group_id:ac.groupId,name:it.name+suffix,col_values:it.col_values,created_by:'automation'}).select().single();
