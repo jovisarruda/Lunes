@@ -844,6 +844,7 @@ function renderTable(){
     const W=colW();
     html+=`<div class="group">
       <div class="group-head">
+        <input type="checkbox" class="selbox" title="Select all items in this group" ${groupAllSelected(g.id)?'checked':''} onclick="event.stopPropagation();toggleGroupSel('${g.id}',this.checked)">
         <h3 style="color:${g.color}" onclick="collapsed['${g.id}']=!collapsed['${g.id}'];renderView()">${isCol?'▸':'▾'} ${esc(g.name)}</h3>
         <button class="icon-btn" onclick="groupMenu(event,'${g.id}')">⋯</button>
       </div>`;
@@ -895,6 +896,7 @@ function renderProjectTable(){
     const gi=topItems().filter(x=>x.group_id===g.id&&itemVisible(x));
     const sums=ic.filter(c=>c.type==='number').map(c=>({c,t:gi.filter(x=>!isPending(x)).reduce((s,it)=>s+effNum(it,c),0)}));
     html+=`<div class="group"><div class="group-head">
+      <input type="checkbox" class="selbox" title="Select all items in this group" ${groupAllSelected(g.id)?'checked':''} onclick="event.stopPropagation();toggleGroupSel('${g.id}',this.checked)">
       <h3 style="color:${g.color}" onclick="collapsed['${g.id}']=!collapsed['${g.id}'];renderView()">${isCol?'▸':'▾'} ${esc(g.name)}</h3>
       <button class="icon-btn" onclick="groupMenu(event,'${g.id}')">⋯</button></div>`;
     if(!isCol){
@@ -1046,6 +1048,9 @@ async function moveItemToGroup(it,gid,doRender){
   if(doRender)renderView();
 }
 function toggleSel(id,on){if(on)selected.add(id);else selected.delete(id);renderBatchBar()}
+function groupItemIds(gid){const out=[];const top=topItems().filter(x=>x.group_id===gid&&itemVisible(x));const rec=it=>{out.push(it.id);subsOf(it.id).forEach(rec)};top.forEach(rec);return out}
+function groupAllSelected(gid){const ids=groupItemIds(gid);return ids.length>0&&ids.every(id=>selected.has(id))}
+function toggleGroupSel(gid,on){const ids=groupItemIds(gid);ids.forEach(id=>{if(on)selected.add(id);else selected.delete(id)});renderView()}
 function clearSel(){selected.clear();renderView()}
 function renderBatchBar(){
   let bb=document.getElementById('batchbar');
@@ -1414,17 +1419,31 @@ async function batchDuplicate(){
   document.querySelector('.overlay')?.remove();
   selected.clear();renderView();toast('Duplicated '+sel.length+' row(s)');
 }
-function bmValueUI(){
-  const c=cols.find(x=>x.id===$('bmCol').value);const w=$('bmVal');
+async function bmValueUI(){
+  const c=cols.find(x=>x.id===$('bmCol').value);const w=$('bmVal');if(!c)return;
   if(c.type==='status')w.innerHTML=`<select id="bmInput"><option value="">— clear</option>${(c.options.labels||[]).map(l=>`<option>${esc(l.name)}</option>`).join('')}</select>`;
   else if(c.type==='person'||c.type==='label'){const ch=c.options.choices||[];w.innerHTML=`<input id="bmInput" list="bmList" placeholder="value"><datalist id="bmList">${ch.map(o=>`<option>${esc(o)}</option>`).join('')}</datalist>`}
   else if(c.type==='date')w.innerHTML=`<input id="bmInput" type="date">`;
   else if(c.type==='number')w.innerHTML=`<input id="bmInput" type="number" step="any">`;
   else if(c.type==='checkbox')w.innerHTML=`<select id="bmInput"><option value="">unchecked</option><option value="1">checked</option></select>`;
+  else if(c.type==='database'){
+    const o=c.options||{};
+    if(o.mode==='mirror'){w.innerHTML=`<span class="small">Mirror column is read-only — can't be bulk edited.</span>`;return}
+    if(!o.source){w.innerHTML=`<span class="small">Configure this column first (Columns → ⚙).</span>`;return}
+    w.innerHTML=`<select id="bmInput"><option value="">— loading…</option></select>`;
+    const colId=c.id;
+    const vals=o.mode==='connect'?await dbValues({options:{source:o.source,field:'_name'}}):await dbValues(c);
+    if(!$('bmCol')||$('bmCol').value!==colId)return; // column changed while loading
+    const inp=$('bmInput');if(!inp)return;
+    inp.innerHTML=`<option value="">— clear</option>`+vals.map(v=>`<option value="${esc(String(o.mode==='connect'?v.uid:v.val))}">${esc(String(v.val))}</option>`).join('');
+  }
   else w.innerHTML=`<input id="bmInput" placeholder="value">`;
 }
 async function batchApply(){
-  const c=cols.find(x=>x.id===$('bmCol').value);const raw=$('bmInput')?.value??'';
+  const c=cols.find(x=>x.id===$('bmCol').value);
+  if(c&&c.type==='database'&&c.options&&c.options.mode==='mirror')return toast('Mirror columns are read-only');
+  if(!$('bmInput'))return toast('Configure this column first');
+  const raw=$('bmInput')?.value??'';
   const targets=items.filter(x=>selected.has(x.id)&&((x.parent_id?'subitem':'item')===c.scope));
   if(!targets.length)return toast('No selected rows in this column scope');
   if(!confirm('Set '+c.name+' = "'+raw+'" on '+targets.length+' '+c.scope+'(s)?'))return;
