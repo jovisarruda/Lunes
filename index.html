@@ -1512,11 +1512,23 @@ function promptAdd(groupId,parentId){
 }
 function groupMenu(e,gid){
   const g=groups.find(x=>x.id===gid);
-  menu(e,[
+  const idx=groups.findIndex(x=>x.id===gid);
+  const opts=[
     ['Rename',async()=>{const n=prompt('Group name:',g.name);if(!n)return;await sb.from('groups').update({name:n}).eq('id',gid);g.name=n;renderView()}],
-    ['Change color',()=>{menu(lastMenuEvent,GROUP_COLORS.map(c=>['●'+c,async()=>{await sb.from('groups').update({color:c}).eq('id',gid);g.color=c;renderView()},c]))}],
-    ['!Delete group',async()=>{if(!confirm('Delete group and its items?'))return;await sb.from('groups').delete().eq('id',gid);groups=groups.filter(x=>x.id!==gid);items=items.filter(x=>x.group_id!==gid);renderView()}]
-  ]);
+    ['Change color',()=>{menu(lastMenuEvent,GROUP_COLORS.map(c=>['●'+c,async()=>{await sb.from('groups').update({color:c}).eq('id',gid);g.color=c;renderView()},c]))}]
+  ];
+  if(idx>0)opts.push(['↑ Move up',()=>moveGroup(gid,-1)]);
+  if(idx<groups.length-1)opts.push(['↓ Move down',()=>moveGroup(gid,1)]);
+  opts.push(['!Delete group',async()=>{if(!confirm('Delete group and its items?'))return;await sb.from('groups').delete().eq('id',gid);groups=groups.filter(x=>x.id!==gid);items=items.filter(x=>x.group_id!==gid);renderView()}]);
+  menu(e,opts);
+}
+// reorder groups in the table (persists sequential positions)
+function moveGroup(gid,dir){
+  const idx=groups.findIndex(x=>x.id===gid),j=idx+dir;
+  if(idx<0||j<0||j>=groups.length)return;
+  const arr=groups.slice();const[g]=arr.splice(idx,1);arr.splice(j,0,g);groups=arr;
+  renderView();
+  for(let k=0;k<groups.length;k++){if(groups[k].position!==k){groups[k].position=k;sb.from('groups').update({position:k}).eq('id',groups[k].id)}}
 }
 
 /* ---- KANBAN ---- */
