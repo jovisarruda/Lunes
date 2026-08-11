@@ -353,7 +353,7 @@ const uid=()=>(window.crypto&&crypto.randomUUID?crypto.randomUUID():'x'+Math.ran
 /* ===== Supabase connection (board = ?board=<id>). Standalone/demo mode when absent. ===== */
 const CONN=new URLSearchParams(location.search).get('board');
 const SB=CONN?window.supabase.createClient('https://ybzrpqgofxkzaqasfsna.supabase.co','sb_publishable_0I8ZhiGBgfjWKBwTHV3TSA_11Kj3Jid'):null;
-let COL={},DEFGROUP=null,SHADOW={items:{},links:{}},SYNCT=null,MYNAME='You';
+let COL={},DEFGROUP=null,GROUPS=[],SHADOW={items:{},links:{}},SYNCT=null,MYNAME='You';
 const _cv=(it,cid)=>cid&&it.col_values?(it.col_values[cid]??null):null;
 async function loadFromDB(){
   const [gc,cc,ic,lc,bc]=await Promise.all([
@@ -364,6 +364,7 @@ async function loadFromDB(){
     SB.from('boards').select('settings,name').eq('id',CONN).single()
   ]);
   DEFGROUP=(gc.data&&gc.data[0]&&gc.data[0].id)||null;
+  GROUPS=gc.data||[];
   const bcols=cc.data||[];
   const find=(re,ty)=>bcols.find(c=>re&&re.test(c.name))||bcols.find(c=>c.type===ty);
   COL={start:find(/start|in[ií]cio/i,'date'),finish:find(/finish|end|t[ée]rmino/i,'date'),person:find(null,'person'),effort:find(/effort|esfor/i,'number'),status:find(null,'status'),category:find(/categ/i,'label')};
@@ -1136,7 +1137,8 @@ function openSettings(){
       <div class="f chk"><input type="checkbox" id="s-cw" ${settings.countWeekends?'checked':''}><label>Count weekends &amp; holidays in scheduling</label></div>
       <div class="f chk"><input type="checkbox" id="s-sw" ${settings.showWeekends?'checked':''}><label>Shade weekends (Day zoom)</label></div>
       <div class="f full"><label>Color bars by</label><select id="s-color"><option value="none">Default</option><option value="status">Status</option><option value="person">Person</option><option value="category">Category</option></select></div>
-      <div class="f full"><label>Actions</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="s-collapse" type="button"></button><button class="btn" id="s-pdf" type="button">⤓ Export PDF</button></div></div>
+      <div class="f full"><label>Actions</label><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn" id="s-collapse" type="button"></button><button class="btn" id="s-pdf" type="button">⤓ Export PDF</button><button class="btn" id="s-csv-exp" type="button">⤓ Export CSV</button><button class="btn" id="s-csv-imp" type="button">⤒ Import CSV</button></div></div>
+      <div class="f full"><span class="sub">Export CSV = full backup (all activities, columns, dependencies + project settings). Import CSV mirrors the file onto the board (creates/updates/deletes to match), with a confirmation.</span></div>
     </div>
     <div class="foot"><button class="btn" data-a="cancel">Cancel</button><button class="btn primary" data-a="save">Save</button></div>`;
   scrim.appendChild(m);document.body.appendChild(scrim);
@@ -1144,6 +1146,8 @@ function openSettings(){
   const anyOpen=tasks.some(t=>!isLeaf(t)&&!t.collapsed);m.querySelector('#s-collapse').textContent=anyOpen?'Collapse all':'Expand all';
   m.querySelector('#s-collapse').onclick=()=>{collapseAll();scrim.remove();openSettings()};
   m.querySelector('#s-pdf').onclick=()=>{scrim.remove();exportPDF()};
+  m.querySelector('#s-csv-exp').onclick=()=>{exportGanttCSV()};
+  m.querySelector('#s-csv-imp').onclick=()=>{const inp=document.createElement('input');inp.type='file';inp.accept='.csv,text/csv';inp.onchange=()=>{if(inp.files&&inp.files[0]){scrim.remove();importGanttCSVFile(inp.files[0]);}};inp.click();};
   m.querySelector('[data-a="cancel"]').onclick=()=>scrim.remove();
   m.querySelector('[data-a="save"]').onclick=()=>{
     kickoff=m.querySelector('#s-kick').value||kickoff;deadline=m.querySelector('#s-dead').value||deadline;
@@ -1156,6 +1160,108 @@ function openSettings(){
   scrim.addEventListener('mousedown',e=>{if(e.target===scrim)scrim.remove()});
 }
 function exportPDF(){toast('Opening print dialog — choose “Save as PDF” (landscape A3 recommended).');setTimeout(()=>window.print(),450)}
+
+/* ============================================================ GANTT CSV — full round-trip backup (export + mirror import) */
+function csvCell(v){v=(v==null?'':String(v));return /[",\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
+function csvRow(a){return a.map(csvCell).join(',')}
+function parseCSVRecords(text){
+  const s=String(text).replace(/\r\n/g,'\n').replace(/\r/g,'\n');const rows=[];let row=[],cur='',q=false;
+  for(let i=0;i<s.length;i++){const c=s[i];
+    if(q){if(c==='"'){if(s[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c;continue}
+    if(c==='"'){q=true;continue}
+    if(c===','){row.push(cur);cur='';continue}
+    if(c==='\n'){row.push(cur);rows.push(row);row=[];cur='';continue}
+    cur+=c;
+  }
+  if(cur!==''||row.length){row.push(cur);rows.push(row)}
+  return rows.filter(r=>!(r.length===1&&r[0]===''));
+}
+function csvColumns(){return columns.slice();} // status, category + all custom item columns
+function buildGanttCSV(){
+  const cc=csvColumns(),out=[];
+  out.push(['LUNES_GANTT_CSV','v1']);
+  out.push(['[SETTINGS]']);out.push(['key','value']);
+  [['kickoff',kickoff],['deadline',deadline],['hoursPerDay',settings.hoursPerDay],['daysPerWeek',settings.daysPerWeek],['countWeekends',settings.countWeekends],['showWeekends',settings.showWeekends],['colorBy',colorBy]].forEach(kv=>out.push(kv));
+  out.push(['[DEDICATION]']);out.push(['person','hours','mode']);
+  Object.keys(dedication||{}).forEach(p=>out.push([p,dedication[p].hours,dedication[p].mode]));
+  out.push(['[ACTIVITIES]']);
+  out.push(['id','code','parent_code','name','group','start','finish','milestone','effort','effort_unit','person','predecessors','manual_dates'].concat(cc.map(c=>c.name)));
+  const gname=id=>{const g=(GROUPS||[]).find(x=>x.id===id);return g?g.name:''};
+  for(const t of tasks){
+    const par=t.parent?byId(t.parent):null;
+    const r=[t.id,(t.code==null?'':t.code),(par&&par.code!=null?par.code:''),t.name,gname(t._group),t.start||'',t.milestone?(t.start||''):(t.end||''),t.milestone?'true':'false',(t.eff||0),(t.effU||'h'),(t.person||''),predText(t),(t.manualDates?'true':'false')];
+    for(const c of cc)r.push(getVal(t,c));
+    out.push(r);
+  }
+  return out.map(csvRow).join('\n');
+}
+function exportGanttCSV(){
+  const csv=buildGanttCSV();
+  const nm=(document.title||'LunesGantt').replace(/[^a-z0-9\-_ ]/gi,'').trim()||'LunesGantt';
+  const blob=new Blob(['﻿'+csv],{type:'text/csv;charset=utf-8'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=nm+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},150);
+  toast('CSV exported — '+tasks.length+' activities.');
+}
+function importGanttCSVFile(file){
+  const rd=new FileReader();
+  rd.onload=()=>{try{applyImportedCSV(String(rd.result))}catch(e){toast('Import failed: '+(e.message||e))}};
+  rd.readAsText(file);
+}
+async function applyImportedCSV(text){
+  const recs=parseCSVRecords(text);
+  if(!recs.length)throw new Error('empty file');
+  let sec='',actHead=null;const actRows=[],setKV={},ded={};
+  for(const r of recs){const first=(r[0]||'').trim();
+    if(first==='LUNES_GANTT_CSV')continue;
+    if(/^\[.*\]$/.test(first)){sec=first;actHead=null;continue}
+    if(sec==='[SETTINGS]'){if(first==='key')continue;setKV[first]=r[1];continue}
+    if(sec==='[DEDICATION]'){if(first==='person')continue;if(first)ded[first]={hours:+r[1]||settings.hoursPerDay,mode:(r[2]||'day')};continue}
+    if(sec==='[ACTIVITIES]'){if(!actHead){actHead=r.map(h=>String(h).trim());continue}actRows.push(r);continue}
+  }
+  if(!actHead)throw new Error('no [ACTIVITIES] header');
+  if(!actRows.length)throw new Error('no activity rows found');
+  const idx={};actHead.forEach((h,i)=>idx[h]=i);
+  const get=(r,k)=>{const i=idx[k];return i==null?'':(r[i]==null?'':String(r[i]))};
+  const cc=csvColumns();
+  const gByName={};(GROUPS||[]).forEach(g=>gByName[g.name]=g.id);
+  const exById={};tasks.forEach(t=>exById[t.id]=t);
+  let maxCode=Math.max(0,...tasks.map(t=>t.code||0),...actRows.map(r=>parseInt(get(r,'code'),10)||0));
+  const newTasks=actRows.map(r=>{
+    let id=get(r,'id').trim()||uid();
+    let code=parseInt(get(r,'code'),10);if(!code||isNaN(code))code=++maxCode;
+    const ex=exById[id],ms=/^true$/i.test(get(r,'milestone')),st=get(r,'start')||null;
+    const t={id,code,name:get(r,'name'),_group:gByName[get(r,'group')]||(ex&&ex._group)||DEFGROUP,
+      start:st,end:ms?st:(get(r,'finish')||null),milestone:ms,
+      eff:parseFloat(get(r,'effort'))||0,effU:get(r,'effort_unit')||'h',person:get(r,'person')||'',
+      manualDates:/^true$/i.test(get(r,'manual_dates')),status:'',cat:'',
+      cv:Object.assign({},ex?ex.cv:{}),collapsed:ex?ex.collapsed:false,
+      _pcode:parseInt(get(r,'parent_code'),10),_pred:get(r,'predecessors')};
+    for(const c of cc){if(idx[c.name]==null)continue;const v=get(r,c.name);if(c.id==='status')t.status=v;else if(c.id==='category')t.cat=v;else t.cv[c.id]=v;}
+    return t;
+  });
+  const byCodeNew={};newTasks.forEach(t=>byCodeNew[t.code]=t);
+  newTasks.forEach(t=>{t.parent=(t._pcode&&byCodeNew[t._pcode]&&byCodeNew[t._pcode].id!==t.id)?byCodeNew[t._pcode].id:null;delete t._pcode;});
+  const newLinks=[];
+  newTasks.forEach(t=>{const txt=t._pred||'';delete t._pred;
+    txt.split(/[;,]/).map(x=>x.trim()).filter(Boolean).forEach(tok=>{const m=tok.match(/^(\d+)\s*(FS|SS|FF|SF)?$/i);if(!m)return;const src=byCodeNew[+m[1]];if(src&&src.id!==t.id)newLinks.push({id:uid(),from:src.id,to:t.id,type:(m[2]||'FS').toUpperCase()});});
+  });
+  const oldIds=new Set(tasks.map(t=>t.id)),newIds=new Set(newTasks.map(t=>t.id));
+  const created=[...newIds].filter(i=>!oldIds.has(i)).length,deleted=[...oldIds].filter(i=>!newIds.has(i)).length,updated=newTasks.length-created;
+  if(!confirm('Import (mirror) — the CSV becomes the board:\n\n• Create: '+created+'\n• Update: '+updated+'\n• DELETE (not in file): '+deleted+'\n\nThis overwrites the board with the file. Continue?'))return;
+  if(setKV.kickoff)kickoff=setKV.kickoff;if(setKV.deadline)deadline=setKV.deadline;
+  if(setKV.hoursPerDay)settings.hoursPerDay=Math.max(1,+setKV.hoursPerDay||8);
+  if(setKV.daysPerWeek)settings.daysPerWeek=Math.max(1,Math.min(7,+setKV.daysPerWeek||5));
+  if('countWeekends'in setKV)settings.countWeekends=/^true$/i.test(setKV.countWeekends);
+  if('showWeekends'in setKV)settings.showWeekends=/^true$/i.test(setKV.showWeekends);
+  if(setKV.colorBy)colorBy=setKV.colorBy;
+  if(Object.keys(ded).length)dedication=ded;
+  tasks=newTasks;links=newLinks;seq=Math.max(0,...tasks.map(t=>t.code||0));
+  initPeople();
+  if(CONN){try{await syncToDB();await saveSettingsDB();}catch(e){toast('Saved locally, sync error: '+(e.message||e));}}
+  render();
+  toast('Imported: '+created+' created, '+updated+' updated, '+deleted+' deleted.');
+}
 
 function initPeople(){peopleList=[...new Set(tasks.filter(isLeaf).map(t=>t.person).filter(Boolean))]}
 
