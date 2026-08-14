@@ -12,7 +12,7 @@
   --r:8px;font-size:14px;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;height:100dvh;overflow:hidden}
 button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
 input,select,textarea{font:inherit;color:inherit;border:1px solid var(--border);border-radius:6px;padding:6px 8px;background:#fff;outline:none}
 input:focus,select:focus,textarea:focus{border-color:var(--accent)}
@@ -25,14 +25,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .icon-btn:hover{background:var(--accent-soft);color:var(--accent)}
 
 /* login */
-#login{height:100vh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:24px}
+#login{height:100vh;height:100dvh;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:24px}
 #login .card{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:36px;width:340px;display:flex;flex-direction:column;gap:12px;box-shadow:0 8px 30px rgba(30,40,90,.06)}
 .logo{font-size:26px;font-weight:700;letter-spacing:.5px}
 .logo span{color:var(--green)}
 #loginErr{color:var(--danger);font-size:12.5px;min-height:16px}
 
 /* layout */
-#app{display:none;height:100vh;flex-direction:row}
+#app{display:none;height:100vh;height:100dvh;flex-direction:row}
 #sidebar{width:220px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:14px 10px;gap:4px;flex-shrink:0}
 #sidebar .logo{padding:4px 10px 14px}
 .bnav{padding:8px 10px;border-radius:6px;display:flex;align-items:center;gap:8px;color:var(--text);width:100%;text-align:left;font-weight:500;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
@@ -94,7 +94,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
    a barra superior, filtros e a TABELA (itens padrão) para melhorar a visualização.
    Não altera o Gantt (nada aqui usa as classes do gantt). */
 @media (max-aspect-ratio: 1/1){
-  #topbar{padding:8px 10px;gap:6px;flex-wrap:wrap}
+  #topbar{padding:8px 10px;gap:6px;flex-wrap:wrap;position:sticky;top:0;z-index:30;flex-shrink:0}
   #boardTitle{font-size:16px}
   /* junta as abas num só botão-menu e os ícones (filter/columns/automate/sino) noutro */
   .tabs{display:none}
@@ -325,6 +325,8 @@ const $=id=>document.getElementById(id);
 const esc=s=>(s??'').toString().replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const uid=()=>crypto.randomUUID();
 const todayStr=()=>new Date().toISOString().slice(0,10);
+// exibição de datas: armazenadas como AAAA-MM-DD, mostradas como DD-MM-AAAA
+function fmtDateBR(ds){const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(ds==null?'':ds));return m?(m[3]+'-'+m[2]+'-'+m[1]):String(ds==null?'':ds)}
 // add exactly 1 calendar month to 'YYYY-MM-DD', clamping the day to the target month's length
 function addMonth(ds){const p=ds.split('-').map(Number);let ny=p[0],nm=p[1]+1;if(nm>12){nm=1;ny++}const last=new Date(ny,nm,0).getDate();return ny+'-'+String(nm).padStart(2,'0')+'-'+String(Math.min(p[2],last)).padStart(2,'0')}
 // stamp a "<prefix> MM/YYYY" name: replace an existing MM/YYYY pattern, else append
@@ -838,6 +840,7 @@ function cellHtml(it,col){
   }
   let disp=v??'';
   if(col.type==='number'&&v!==''&&v!=null)disp=fmtMoney(v);
+  else if(col.type==='date'&&v)disp=fmtDateBR(v);
   return `<span class="cellv" onclick="editCell(event,'${it.id}','${col.id}')">${esc(disp)}</span>`;
 }
 function statusMenu(e,itemId,colId){
@@ -1142,6 +1145,7 @@ function cellRO(it,col){
   if(col.type==='checkbox')return v?'✓':'';
   if(col.type==='link')return v?'<span class="small">🔗 link</span>':'';
   if(col.type==='number'&&v!==''&&v!=null)return esc(fmtMoney(v));
+  if(col.type==='date'&&v)return esc(fmtDateBR(v));
   return esc(v??'');
 }
 function ghostItemRow(it,ic,n){
