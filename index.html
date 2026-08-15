@@ -158,6 +158,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--accent)}
 .chip button{color:inherit;opacity:.6}
 .small{font-size:12px;color:var(--muted)}
 .autorule{border:1px solid var(--border);border-radius:8px;padding:10px;display:flex;justify-content:space-between;gap:8px;align-items:center;font-size:13px}
+.notif-list{display:flex;flex-direction:column;gap:8px;max-height:60vh;overflow:auto;margin-top:4px}
+.notif-card{border:1px solid var(--border);border-radius:10px;padding:10px 12px;background:#fff}
+.notif-card.unread{border-left:3px solid var(--accent);background:var(--accent-soft)}
+.notif-top{display:flex;align-items:center;gap:8px}
+.notif-badge{font-size:11px;font-weight:700;border-radius:10px;padding:2px 8px;white-space:nowrap}
+.notif-dot{width:8px;height:8px;border-radius:50%;background:var(--danger);margin-left:auto;flex-shrink:0}
+.notif-name{font-weight:700;margin-top:5px;font-size:14px;word-break:break-word}
+.notif-trig{font-size:13px;color:var(--text);margin-top:2px;word-break:break-word}
+.notif-actions{display:flex;gap:6px;margin-top:8px}
 hr{border:none;border-top:1px solid var(--border)}
 .menu{position:fixed;background:#fff;border:1px solid var(--border);border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);z-index:60;min-width:160px;padding:4px;display:flex;flex-direction:column}
 .menu button{text-align:left;padding:7px 10px;border-radius:5px;font-size:13px}
@@ -297,7 +306,7 @@ table.wlt td.over{background:#fdecef;color:#b02a3c;font-weight:600}
     <div id="aiFoot">
       <input type="file" id="aiImgFile" accept="image/*,application/pdf" multiple style="display:none" onchange="aiPickFiles(this.files)">
       <button class="btn sm ghost" onclick="document.getElementById('aiImgFile').click()" title="Anexar recibos/imagens/PDF (vários)">📎</button>
-      <textarea id="aiInput" placeholder="Pergunte, ou anexe recibos/PDFs e links…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();aiChatSend()}"></textarea>
+      <textarea id="aiInput" placeholder="Pergunte, ou anexe recibos/PDFs e links (pode colar imagem com Ctrl+V)…" onpaste="aiPaste(event)" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();aiChatSend()}"></textarea>
       <button class="btn" onclick="aiChatSend()" title="Enviar">↑</button>
     </div>
   </div>
@@ -315,7 +324,7 @@ const STATUS_COLORS=['#c4c4c4','#fdab3d','#00c875','#e2445c','#579bfc','#a25ddc'
 /* ================= STATE ================= */
 let user=null, myName='', isAdmin=false;
 let boards=[], curBoard=null, groups=[], cols=[], items=[], automations=[], notifs=[], links=[];
-let view='table', collapsed={}, panelItem=null, panelTab='update';
+let view='table', collapsed={}, panelItem=null, panelTab='update', attStage=[];
 // A1 (Etapa 0): boards de teste — mostram um badge "TEST" no título (dados/config temporários).
 // Purchase e Income saíram de teste (dados/config oficiais).
 const TEST_BOARDS=[];
@@ -812,7 +821,7 @@ function cellHtml(it,col){
     const lbl=(col.options.labels||[]).find(l=>l.name===v);
     return `<span class="status-chip" style="background:${lbl?lbl.color:'#c4c4c4'}" onclick="statusMenu(event,'${it.id}','${col.id}')">${esc(v||'—')}</span>`;
   }
-  if(col.type==='checkbox')return `<input type="checkbox" ${v?'checked':''} onchange="setCell('${it.id}','${col.id}',this.checked)">`;
+  if(col.type==='checkbox')return `<input type="checkbox" ${v?'checked':''} onchange="setCell('${it.id}','${col.id}',this.checked,event)">`;
   if(col.type==='person'||col.type==='label'){
     return `<span class="cellv" onclick="choiceMenu(event,'${it.id}','${col.id}')">${v?esc(v):'—'}</span>`;
   }
@@ -912,7 +921,7 @@ function renderTable(){
     const W=colW();
     html+=`<div class="group">
       <div class="group-head">
-        <input type="checkbox" class="selbox" title="Select all items in this group" ${groupAllSelected(g.id)?'checked':''} onclick="event.stopPropagation();toggleGroupSel('${g.id}',this.checked)">
+        <input type="checkbox" class="selbox" title="Select all items in this group" ${groupAllSelected(g.id)?'checked':''} onclick="event.stopPropagation();toggleGroupSel('${g.id}',this.checked,event)">
         <h3 style="color:${g.color}" onclick="collapsed['${g.id}']=!collapsed['${g.id}'];renderView()">${isCol?'▸':'▾'} ${esc(g.name)}</h3>
         <button class="icon-btn" onclick="groupMenu(event,'${g.id}')">⋯</button>
       </div>`;
@@ -926,7 +935,7 @@ function renderTable(){
         const shown=collapsed['x'+it.id]||subFiltersActive();
         if(isPending(it)){html+=ghostItemRow(it,ic,subs.length);continue}
         html+=`<tr class="item" ondragover="rowOver(event)" ondragleave="rowLeave(event)" ondrop="rowDrop(event,'${it.id}','item')"><td><div class="iname">
-          <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
+          <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked,event)">
           <span class="drag" draggable="true" ondragstart="rowDragStart(event,'${it.id}','item')" ondragend="rowDragEnd(event)" title="Drag to reorder">⠿</span>
           <button class="exp" onclick="collapsed['x${it.id}']=!collapsed['x${it.id}'];renderView()">${subs.length?(shown?'▾':'▸'):'·'}</button>
           <span class="nm" data-nm="${it.id}" onclick="nmClick(event,'${it.id}')" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
@@ -940,7 +949,7 @@ function renderTable(){
           // subitems live in their own nested table → independent, resizable widths; N-level recursive
           html+=`<tr class="subwrap"><td colspan="${ic.length+2}">
             <table class="gtable subtable" style="table-layout:fixed;width:${sw}px">
-            <tr><th style="width:${W.s_name||260}px;position:relative"><input type="checkbox" class="selbox" title="Select all subitems of this item" ${subtreeAllSelected(it.id)?'checked':''} onclick="event.stopPropagation();toggleSubtreeSel('${it.id}',this.checked)"> Subitem<span class="rz" onmousedown="rzStart(event,'s_name')"></span></th>
+            <tr><th style="width:${W.s_name||260}px;position:relative"><input type="checkbox" class="selbox" title="Select all subitems of this item" ${subtreeAllSelected(it.id)?'checked':''} onclick="event.stopPropagation();toggleSubtreeSel('${it.id}',this.checked,event)"> Subitem<span class="rz" onmousedown="rzStart(event,'s_name')"></span></th>
             ${sc.map(c=>`<th style="width:${W['s_'+c.id]||140}px;position:relative">${esc(c.name)}<span class="rz" onmousedown="rzStart(event,'s_${c.id}')"></span></th>`).join('')}
             <th style="width:40px"></th></tr>`;
           html+=subRows(g.id,it.id,0,sc);
@@ -965,7 +974,7 @@ function renderProjectTable(){
     const gi=topItems().filter(x=>x.group_id===g.id&&itemVisible(x));
     const sums=ic.filter(c=>c.type==='number').map(c=>({c,t:gi.filter(x=>!isPending(x)).reduce((s,it)=>s+effNum(it,c),0)}));
     html+=`<div class="group"><div class="group-head">
-      <input type="checkbox" class="selbox" title="Select all items in this group" ${groupAllSelected(g.id)?'checked':''} onclick="event.stopPropagation();toggleGroupSel('${g.id}',this.checked)">
+      <input type="checkbox" class="selbox" title="Select all items in this group" ${groupAllSelected(g.id)?'checked':''} onclick="event.stopPropagation();toggleGroupSel('${g.id}',this.checked,event)">
       <h3 style="color:${g.color}" onclick="collapsed['${g.id}']=!collapsed['${g.id}'];renderView()">${isCol?'▸':'▾'} ${esc(g.name)}</h3>
       <button class="icon-btn" onclick="groupMenu(event,'${g.id}')">⋯</button></div>`;
     if(!isCol){
@@ -992,7 +1001,7 @@ function projRows(groupId,parentId,depth,ic){
     const open=!collapsed['x'+it.id];
     const pad=8+depth*20;
     html+=`<tr class="item"><td style="text-align:right;color:var(--muted);font-variant-numeric:tabular-nums">${it.code!=null?it.code:''}</td><td><div class="iname" style="padding-left:${pad}px">
-      <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
+      <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked,event)">
       <button class="exp" onclick="collapsed['x${it.id}']=!collapsed['x${it.id}'];renderView()">${kids.length?(open?'▾':'▸'):'·'}</button>
       <span class="nm" data-nm="${it.id}" onclick="nmClick(event,'${it.id}')" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
       <button class="nm-edit" title="Rename" onclick="startRename(event,'${it.id}')">✎</button>
@@ -1027,13 +1036,13 @@ function subRows(groupId,parentId,depth,sc){
     const open=collapsed['x'+s.id]||subFiltersActive();
     const pad=depth*18;
     html+=`<tr class="subrow" ondragover="rowOver(event)" ondragleave="rowLeave(event)" ondrop="rowDrop(event,'${s.id}','sub')"><td><div class="iname" style="padding-left:${pad}px">
-      <input type="checkbox" class="selbox" ${selected.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${s.id}',this.checked)">
+      <input type="checkbox" class="selbox" ${selected.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${s.id}',this.checked,event)">
       <span class="drag" draggable="true" ondragstart="rowDragStart(event,'${s.id}','sub')" ondragend="rowDragEnd(event)" title="Drag to reorder">⠿</span>
       <button class="exp" onclick="collapsed['x${s.id}']=!collapsed['x${s.id}'];renderView()">${kids.length?(open?'▾':'▸'):'·'}</button>
       <span class="nm" data-nm="${s.id}" onclick="nmClick(event,'${s.id}')" ondblclick="startRename(event,'${s.id}')">${esc(s.name)}</span>
       <button class="nm-edit" title="Rename" onclick="startRename(event,'${s.id}')">✎</button>
       <button class="nm-edit" title="Add subitem" onclick="event.stopPropagation();promptAdd('${groupId}','${s.id}')">＋</button>
-      ${kids.length?`<span class="small">${kids.length}</span><input type="checkbox" class="selbox" title="Select this subitem's subitems" ${subtreeAllSelected(s.id)?'checked':''} onclick="event.stopPropagation();toggleSubtreeSel('${s.id}',this.checked)">`:''}
+      ${kids.length?`<span class="small">${kids.length}</span><input type="checkbox" class="selbox" title="Select this subitem's subitems" ${subtreeAllSelected(s.id)?'checked':''} onclick="event.stopPropagation();toggleSubtreeSel('${s.id}',this.checked,event)">`:''}
     </div></td>
     ${sc.map(c=>`<td>${cellHtml(s,c)}</td>`).join('')}
     <td><button class="icon-btn" onclick="subItemMenu(event,'${s.id}')">⋯</button></td></tr>`;
@@ -1118,7 +1127,23 @@ async function moveItemToGroup(it,gid,doRender){
   logActivity(it.id,'group',old,groupName(gid));
   if(doRender)renderView();
 }
-function toggleSel(id,on){if(on)selected.add(id);else selected.delete(id);renderBatchBar()}
+let lastSelAnchor=null;
+// ids da "mesma classe" (mesmo nível + mesmo contêiner) na ordem de exibição
+function sameClassIds(it){
+  if(!it)return[];
+  if(!it.parent_id)return topItems().filter(x=>x.group_id===it.group_id&&itemVisible(x)).slice().sort((a,b)=>(a.position||0)-(b.position||0)).map(x=>x.id);
+  return subsOf(it.parent_id).filter(x=>passFilter(x)).slice().sort((a,b)=>(a.position||0)-(b.position||0)).map(x=>x.id);
+}
+function toggleSel(id,on,ev){
+  if(ev&&ev.shiftKey&&lastSelAnchor&&lastSelAnchor!==id){
+    const a=items.find(x=>x.id===lastSelAnchor),b=items.find(x=>x.id===id);
+    const same=a&&b&&((!a.parent_id&&!b.parent_id&&a.group_id===b.group_id)||(a.parent_id&&a.parent_id===b.parent_id));
+    if(same){const ids=sameClassIds(b);const i1=ids.indexOf(lastSelAnchor),i2=ids.indexOf(id);
+      if(i1>-1&&i2>-1){const lo=Math.min(i1,i2),hi=Math.max(i1,i2);for(let k=lo;k<=hi;k++)selected.add(ids[k]);lastSelAnchor=id;renderView();return}}
+  }
+  if(on)selected.add(id);else selected.delete(id);
+  lastSelAnchor=id;renderBatchBar();
+}
 function groupItemIds(gid){const out=[];const top=topItems().filter(x=>x.group_id===gid&&itemVisible(x));const rec=it=>{out.push(it.id);subsOf(it.id).forEach(rec)};top.forEach(rec);return out}
 function groupAllSelected(gid){const ids=groupItemIds(gid);return ids.length>0&&ids.every(id=>selected.has(id))}
 function toggleGroupSel(gid,on){const ids=groupItemIds(gid);ids.forEach(id=>{if(on)selected.add(id);else selected.delete(id)});renderView()}
@@ -1150,14 +1175,14 @@ function cellRO(it,col){
 }
 function ghostItemRow(it,ic,n){
   return `<tr class="item ghost"><td><div class="iname">
-    <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
+    <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked,event)">
     <span class="exp">·</span><span class="nm">${esc(it.name)}</span><span class="pendtag">AI pending</span>${n?`<span class="small">${n} sub</span>`:''}
   </div></td>${ic.map(c=>`<td>${cellRO(it,c)}</td>`).join('')}
   <td style="white-space:nowrap"><button class="icon-btn" style="color:var(--green)" title="Approve" onclick="approveItem('${it.id}')">✓</button><button class="icon-btn" style="color:var(--danger)" title="Reject" onclick="rejectItem('${it.id}')">✗</button></td></tr>`;
 }
 function ghostSubRow(s,sc){
   return `<tr class="subrow ghost"><td><div class="iname">
-    <input type="checkbox" class="selbox" ${selected.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${s.id}',this.checked)">
+    <input type="checkbox" class="selbox" ${selected.has(s.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${s.id}',this.checked,event)">
     <span class="nm">${esc(s.name)}</span><span class="pendtag">AI pending</span>
   </div></td>${sc.map(c=>`<td>${cellRO(s,c)}</td>`).join('')}
   <td style="white-space:nowrap"><button class="icon-btn" style="color:var(--green)" onclick="approveItem('${s.id}')">✓</button><button class="icon-btn" style="color:var(--danger)" onclick="rejectItem('${s.id}')">✗</button></td></tr>`;
@@ -1182,7 +1207,7 @@ function renderAIInput(){
       <table class="gtable" style="width:auto"><tr><th style="min-width:240px">Item</th>${ic.map(c=>`<th>${esc(c.name)}</th>`).join('')}<th style="width:120px"></th></tr>`;
     for(const it of gi){
       html+=`<tr class="item"><td><div class="iname">
-        <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked)">
+        <input type="checkbox" class="selbox" ${selected.has(it.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${it.id}',this.checked,event)">
         <span class="nm" data-nm="${it.id}" ondblclick="startRename(event,'${it.id}')">${esc(it.name)}</span>
         <button class="nm-edit" title="Rename" onclick="startRename(event,'${it.id}')">✎</button></div></td>
         ${ic.map(c=>`<td>${cellHtml(it,c)}</td>`).join('')}
@@ -1203,7 +1228,7 @@ function renderAIInput(){
       <table class="gtable" style="width:auto"><tr><th style="min-width:200px">Subitem</th><th>Parent</th>${sc.map(c=>`<th>${esc(c.name)}</th>`).join('')}<th style="width:120px"></th></tr>`;
     for(const su of orphan){
       const par=items.find(y=>y.id===su.parent_id);
-      html+=`<tr class="subrow"><td><div class="iname"><input type="checkbox" class="selbox" ${selected.has(su.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${su.id}',this.checked)"><span class="nm" data-nm="${su.id}" ondblclick="startRename(event,'${su.id}')">${esc(su.name)}</span></div></td><td class="small">${esc(par?par.name:'?')}</td>${sc.map(c=>`<td>${cellHtml(su,c)}</td>`).join('')}<td style="white-space:nowrap"><button class="btn sm" style="background:var(--green)" onclick="aiApprove(['${su.id}'])">Approve</button> <button class="icon-btn" style="color:var(--danger)" onclick="rejectItem('${su.id}')">✗</button></td></tr>`;
+      html+=`<tr class="subrow"><td><div class="iname"><input type="checkbox" class="selbox" ${selected.has(su.id)?'checked':''} onclick="event.stopPropagation();toggleSel('${su.id}',this.checked,event)"><span class="nm" data-nm="${su.id}" ondblclick="startRename(event,'${su.id}')">${esc(su.name)}</span></div></td><td class="small">${esc(par?par.name:'?')}</td>${sc.map(c=>`<td>${cellHtml(su,c)}</td>`).join('')}<td style="white-space:nowrap"><button class="btn sm" style="background:var(--green)" onclick="aiApprove(['${su.id}'])">Approve</button> <button class="icon-btn" style="color:var(--danger)" onclick="rejectItem('${su.id}')">✗</button></td></tr>`;
     }
     html+=`</table></div>`;
   }
@@ -1430,6 +1455,7 @@ function showAiFilesChips(){
   c.innerHTML=aiFiles.map((f,i)=>'<span style="display:inline-flex;align-items:center;gap:3px;margin:0 8px 4px 0">'+(f.mime==='application/pdf'?'📄':'🖼️')+'<b>'+(i+1)+'.</b> '+esc(f.name)+' <button class="icon-btn" style="padding:0 3px" onclick="removeAiFile('+i+')" title="remover">✕</button></span>').join('');
 }
 function removeAiFile(i){aiFiles.splice(i,1);showAiFilesChips()}
+async function aiPaste(ev){const items=(ev.clipboardData||{}).items||[];const fs=[];for(const it of items){if(it.type&&it.type.indexOf('image')===0){const f=it.getAsFile();if(f)fs.push(new File([f],(f.name&&f.name!=='image.png'?f.name:('colado-'+Date.now()+'.png')),{type:f.type}));}}if(fs.length){ev.preventDefault();await aiPickFiles(fs);}}
 function clearAiFiles(){aiFiles=[];const f=$('aiImgFile');if(f)f.value='';showAiFilesChips()}
 async function aiUploadFileTo(idx,itemId){
   const af=aiFiles[idx];if(!af||!itemId)return false;
@@ -1764,14 +1790,14 @@ function menu(e,options){
 
 /* ================= ITEM PANEL (comments + activity) ================= */
 async function openPanel(id){
-  panelItem=id;panelTab='update';
+  panelItem=id;panelTab='update';attStage=[];
   renderPanelShell();renderPanel();
 }
 function closePanel(){document.querySelector('#panel')?.remove();panelItem=null}
 function renderPanelShell(){
   document.querySelector('#panel')?.remove();
   const d=document.createElement('div');d.id='panel';
-  d.innerHTML=`<div id="panelHead"><b id="panelName" style="font-size:16px"></b><div style="flex:1"></div><button class="icon-btn" onclick="closePanel()">✕</button></div>
+  d.innerHTML=`<div id="panelHead"><div style="flex:1;min-width:0"><div id="panelCrumb" class="small" style="white-space:normal;word-break:break-word;line-height:1.3;margin-bottom:2px"></div><b id="panelName" style="font-size:16px;display:block;white-space:normal;word-break:break-word;line-height:1.25"></b></div><button class="icon-btn" onclick="closePanel()">✕</button></div>
   <div class="ptabs">
     <button id="pt-update" class="active" onclick="panelTab='update';renderPanel()">Comments</button>
     <button id="pt-files" onclick="panelTab='files';renderPanel()">Files</button>
@@ -1784,6 +1810,10 @@ async function renderPanel(){
   const it=items.find(x=>x.id===panelItem);
   if(!it)return closePanel();
   $('panelName').textContent=(it.parent_id?'↳ ':'')+it.name;
+  // caminho completo (board / grupo / ...pais...) mostrado inteiro, quebrando em linhas
+  (function(){const chain=[];let p=it.parent_id;let guard=0;while(p&&guard++<50){const pa=items.find(x=>x.id===p);if(!pa)break;chain.unshift(pa.name);p=pa.parent_id;}
+    const g=groups.find(x=>x.id===it.group_id);const crumb=[curBoard&&curBoard.name,g&&g.name].concat(chain).filter(Boolean).join(' / ');
+    const el=$('panelCrumb');if(el)el.textContent=crumb;})();
   ['update','files','log','cols'].forEach(t=>$('pt-'+t).classList.toggle('active',panelTab===t));
   const body=$('panelBody');
   if(panelTab==='update'){
@@ -1793,9 +1823,14 @@ async function renderPanel(){
       ${(data||[]).map(c=>`<div class="comment"><div class="meta">${esc(c.author)} · ${new Date(c.created_at).toLocaleString()}</div>${esc(c.body)}</div>`).join('')||'<p class="small">No comments yet.</p>'}`;
   }else if(panelTab==='files'){
     const {data}=await sb.from('attachments').select('*').eq('item_id',it.id).order('created_at',{ascending:false});
-    body.innerHTML=`<div class="row"><input type="file" id="attFile" style="flex:1"><button class="btn sm" onclick="uploadAtt()">Upload</button></div>
+    body.innerHTML=`<div id="attDrop" onpaste="attPaste(event)" ondragover="event.preventDefault();this.style.borderColor='var(--accent)'" ondragleave="this.style.borderColor='var(--border)'" ondrop="attDrop(event)" tabindex="0" style="border:1px dashed var(--border);border-radius:8px;padding:8px;margin-bottom:10px">
+        <div class="row"><input type="file" id="attFile" multiple style="flex:1" onchange="attPick(this.files)"><button class="btn sm" onclick="uploadAtt()">Upload</button></div>
+        <div class="small" style="margin-top:4px">Escolha, arraste vários arquivos, ou clique aqui e cole (Ctrl+V) uma imagem. Máx 15 MB cada.</div>
+        <div id="attStageList" style="margin-top:6px"></div>
+      </div>
       ${(data||[]).map(a=>`<div class="autorule"><span><a href="${esc(a.url)}" target="_blank" style="color:var(--accent);font-weight:500">📎 ${esc(a.name)}</a><br><span class="small">${esc(a.author||'')} · ${new Date(a.created_at).toLocaleString()}</span></span>
-      <button class="icon-btn" style="color:var(--danger)" onclick="delAtt('${a.id}','${esc(a.path)}')">🗑</button></div>`).join('')||'<p class="small">No files yet. Max 15 MB per file.</p>'}`;
+      <button class="icon-btn" style="color:var(--danger)" onclick="delAtt('${a.id}','${esc(a.path)}')">🗑</button></div>`).join('')||'<p class="small">No files yet.</p>'}`;
+    renderAttStage();
   }else if(panelTab==='log'){
     const {data}=await sb.from('activity_logs').select('*').eq('item_id',it.id).order('created_at',{ascending:false}).limit(200);
     body.innerHTML=(data||[]).map(l=>{
@@ -1809,17 +1844,25 @@ async function renderPanel(){
       cc.map(c=>`<div class="row"><span style="width:110px" class="small">${esc(c.name)}</span>${cellHtml(it,c)}</div>`).join('');
   }
 }
+function attPick(fileList){for(const f of [...(fileList||[])])attStage.push(f);const inp=$('attFile');if(inp)inp.value='';renderAttStage();}
+function attDrop(ev){ev.preventDefault();const d=ev.currentTarget;if(d)d.style.borderColor='var(--border)';attPick(ev.dataTransfer&&ev.dataTransfer.files);}
+function attPaste(ev){const items=(ev.clipboardData||{}).items||[];const got=[];for(const it of items){if(it.type&&it.type.indexOf('image')===0){const f=it.getAsFile();if(f){got.push(new File([f],(f.name&&f.name!=='image.png'?f.name:('colado-'+Date.now()+'.png')),{type:f.type}));}}}if(got.length){ev.preventDefault();attPick(got);}}
+function attRemove(i){attStage.splice(i,1);renderAttStage();}
+function renderAttStage(){const el=$('attStageList');if(!el)return;el.innerHTML=attStage.map(function(f,i){return '<span style="display:inline-flex;align-items:center;gap:3px;margin:0 8px 4px 0;background:var(--accent-soft);border-radius:12px;padding:2px 8px;font-size:12px">'+(/^image\//.test(f.type)?'🖼️':(f.type==='application/pdf'?'📄':'📎'))+' '+esc(f.name)+' <button class="icon-btn" style="padding:0 3px" onclick="attRemove('+i+')" title="remover">✕</button></span>';}).join('');}
 async function uploadAtt(){
-  const f=$('attFile').files[0];if(!f)return toast('Choose a file first');
-  if(f.size>15*1024*1024)return toast('Max 15 MB');
-  toast('Uploading…');
-  // Fase 4 item 8: anexos vão para o Google Drive via Edge Function (service account). `path` guarda o file id do Drive.
-  const fd=new FormData();fd.append('file',f);fd.append('itemId',panelItem);
-  const {data,error}=await sb.functions.invoke('drive-upload',{body:fd});
-  if(error||!data||!data.id)return toast('Upload failed: '+((error&&error.message)||(data&&data.error)||'unknown'));
-  await sb.from('attachments').insert({item_id:panelItem,name:f.name,path:data.id,url:data.url,author:myName});
-  logActivity(panelItem,'attachment','',f.name);
-  toast('File uploaded');renderPanel();
+  const staged=attStage.slice();
+  if(!staged.length)return toast('Escolha, arraste ou cole arquivo(s) primeiro');
+  const target=panelItem;let ok=0,fail=0;toast('Enviando '+staged.length+' arquivo(s)…');
+  // Fase 4 item 8: anexos vão para o Google Drive via Edge Function. `path` guarda o file id do Drive.
+  for(const f of staged){
+    if(f.size>15*1024*1024){fail++;toast('Pulado (>15MB): '+f.name);continue;}
+    const fd=new FormData();fd.append('file',f);fd.append('itemId',target);
+    const {data,error}=await sb.functions.invoke('drive-upload',{body:fd});
+    if(error||!data||!data.id){fail++;continue;}
+    await sb.from('attachments').insert({item_id:target,name:f.name,path:data.id,url:data.url,author:myName});
+    logActivity(target,'attachment','',f.name);ok++;
+  }
+  attStage=[];toast(ok+' enviado(s)'+(fail?(', '+fail+' falhou(aram)'):''));if(panelItem===target)renderPanel();
 }
 async function delAtt(id,path){
   if(!confirm('Delete this file?'))return;
@@ -2243,11 +2286,13 @@ async function autoLog(boardId,autoId,itemId,message){
 // human text of what triggered the rule (goes into the notification)
 function trigText(a,colsArr){
   const t=a.trigger,cn=id=>(colsArr||[]).find(c=>c.id===id)?.name||'?';
-  if(t.type==='status_changes')return '"'+cn(t.colId)+'" changed to "'+t.value+'"';
-  if(t.type==='date_arrives')return '"'+cn(t.colId)+'" date is today';
-  if(t.type==='monthly')return 'monthly trigger (day '+t.day+')';
-  if(t.type==='auto_date_duplication')return 'monthly duplication ran';
-  return 'item was created';
+  var cond='';
+  if(t.ifStatus&&t.ifStatus.colId)cond=' (com "'+cn(t.ifStatus.colId)+'" em '+((t.ifStatus.values||[]).join(', '))+')';
+  if(t.type==='status_changes')return '"'+cn(t.colId)+'" mudou para "'+t.value+'"'+cond;
+  if(t.type==='date_arrives')return 'a data "'+cn(t.colId)+'" chegou'+cond;
+  if(t.type==='monthly')return 'gatilho mensal (dia '+t.day+')';
+  if(t.type==='auto_date_duplication')return 'duplicação mensal executada';
+  return 'item foi criado';
 }
 function notifMsg(a,it,bName,colsArr,parentName){
   const nm=(parentName?parentName+' / ':'')+(it.parent_id?'↳ ':'')+it.name;
@@ -2367,10 +2412,36 @@ async function loadNotifs(){
   const unread=notifs.filter(n=>!n.read).length;
   const bc=$('bellCount');bc.style.display=unread?'block':'none';bc.textContent=unread;
 }
-function openNotifs(e){
-  menu(e,notifs.length?notifs.slice(0,15).map(n=>[(n.read?'· ':'● ')+n.message.slice(0,90),()=>openNotif(n)])
-    .concat([['Mark all read',async()=>{await sb.from('notifications').update({read:true}).eq('user_email',user.email);loadNotifs()}]]):[['No notifications',()=>{}]]);
+// separa a mensagem em item / gatilho / board para exibir organizado
+function parseNotif(msg){
+  let m=String(msg||'').replace(/^⚡\s*/,'');
+  let board='';const bm=m.match(/\(([^()]*)\)\s*$/);if(bm){board=bm[1];m=m.replace(/\s*\([^()]*\)\s*$/,'');}
+  const i=m.indexOf(':');let name=i>-1?m.slice(0,i).trim():'';let trig=i>-1?m.slice(i+1).trim():m.trim();
+  let extra='';const dash=trig.lastIndexOf(' — ');if(dash>-1){extra=trig.slice(dash+3).trim();trig=trig.slice(0,dash).trim();}
+  return {name:name,trigger:trig,extra:extra,board:board};
 }
+function openNotifs(e){
+  const rows=(notifs||[]).map(function(n){
+    const bd=boards.find(b=>b.id===n.board_id);const p=parseNotif(n.message);const bn=(bd&&bd.name)||p.board||'';const bc=boardColor(bn||'—');
+    const when=n.created_at?new Date(n.created_at).toLocaleString('pt-BR'):'';
+    return '<div class="notif-card'+(n.read?'':' unread')+'">'
+      +'<div class="notif-top"><span class="notif-badge" style="background:'+bc+'22;color:'+bc+'">▦ '+esc(bn||'—')+'</span>'
+      +'<span class="small">'+esc(when)+'</span>'+(n.read?'':'<span class="notif-dot" title="não lida"></span>')+'</div>'
+      +(p.name?'<div class="notif-name">'+esc(p.name)+'</div>':'')
+      +(p.trigger?'<div class="notif-trig">⚡ '+esc(p.trigger)+'</div>':'')
+      +(p.extra?'<div class="small" style="margin-top:2px">📝 '+esc(p.extra)+'</div>':'')
+      +'<div class="notif-actions"><button class="btn sm ghost" onclick="openNotifFromModal(\''+n.id+'\')">Abrir item</button>'
+      +(n.read?'':'<button class="btn sm ghost" onclick="markNotifRead(\''+n.id+'\')">Marcar lida</button>')+'</div>'
+      +'</div>';
+  }).join('')||'<p class="small" style="margin-top:8px">Sem notificações.</p>';
+  const unread=(notifs||[]).filter(n=>!n.read).length;
+  overlay('<div class="row" style="align-items:center"><h3 style="margin:0">🔔 Notificações'+(unread?' ('+unread+' não lidas)':'')+'</h3><div style="flex:1"></div>'
+    +(unread?'<button class="btn sm ghost" onclick="markAllNotifs()">Marcar todas como lidas</button>':'')+'</div>'
+    +'<div class="notif-list">'+rows+'</div>');
+}
+async function openNotifFromModal(id){const n=(notifs||[]).find(x=>x.id===id);document.querySelector('.overlay')?.remove();if(n)await openNotif(n);}
+async function markNotifRead(id){await sb.from('notifications').update({read:true}).eq('id',id);const n=(notifs||[]).find(x=>x.id===id);if(n)n.read=true;await loadNotifs();openNotifs();}
+async function markAllNotifs(){await sb.from('notifications').update({read:true}).eq('user_email',user.email);await loadNotifs();openNotifs();}
 // clicking a notification marks it read and opens the referenced item/subitem
 async function openNotif(n){
   await sb.from('notifications').update({read:true}).eq('id',n.id);n.read=true;loadNotifs();
