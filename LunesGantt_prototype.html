@@ -59,6 +59,9 @@
   .pcell input{width:92px;font:inherit;border:1px solid var(--green);border-radius:4px;padding:0 2px}
   .idcell{width:34px;flex:0 0 34px;color:var(--muted2);font-size:11px;font-variant-numeric:tabular-nums;text-align:right;padding-right:6px}
   .predcell{width:104px;flex:0 0 104px;color:var(--slate);cursor:pointer;padding:2px 4px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:12px}
+  select.cellsel{width:100%;max-width:100%;font:inherit;font-size:12px;padding:3px 22px 3px 7px;border:1px solid var(--line);border-radius:6px;background:#fff url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%237a8790' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/></svg>") no-repeat right 7px center;color:var(--text);cursor:pointer;outline:none;-webkit-appearance:none;appearance:none;height:26px}
+  select.cellsel:hover{border-color:var(--slate)}
+  select.cellsel:focus{border-color:var(--green);box-shadow:0 0 0 2px rgba(31,157,99,.18)}
   .predcell:hover{background:var(--line2)} .predcell.empty{color:var(--muted2)} .predcell.ro{cursor:default;color:var(--muted2)}
   .predcell input{width:100px;font:inherit;border:1px solid var(--green);border-radius:4px;padding:0 2px}
   /* chatbot */
@@ -704,7 +707,18 @@ function parseEffort(raw){
   return{value:Math.max(0,+m[1]),unit:m[2]||'d'};
 }
 function startEffEdit(cell,t){const cur=effortText(t);cell.innerHTML=`<input type="text" inputmode="decimal" value="${cur}" placeholder="5, 8h, 2w, 1m, 1y">`;const inp=cell.querySelector('input');inp.focus();inp.select();let handled=false;const done=()=>{if(handled)return;handled=true;const p=parseEffort(inp.value);if(!p){toast('Use a number (days) or h/d/w/m/y, e.g. 5, 8h, 2w, 1m.');return render()}onEffortEdited(t,p.value,p.unit)};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();inp.blur()}if(ev.key==='Escape'){handled=true;render()}}}
-function startPersonEdit(cell,t){const dl='dl'+uid();cell.innerHTML=`<input list="${dl}" value="${(t.person||'').replace(/"/g,'&quot;')}"><datalist id="${dl}">${peopleList.map(p=>`<option value="${p}">`).join('')}</datalist>`;const inp=cell.querySelector('input');inp.focus();inp.select();let handled=false;const done=()=>{if(handled)return;handled=true;const v=inp.value.trim();t.person=v;if(v&&!peopleList.includes(v))peopleList.push(v);if(v&&!dedication[v])dedication[v]={hours:settings.hoursPerDay,mode:'day'};render()};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){handled=true;render()}}}
+const ADD_PERSON='__addperson__';
+function personOptions(cur){cur=cur||'';const list=peopleList.slice();if(cur&&!list.includes(cur))list.push(cur);return '<option value="">— none</option>'+list.map(p=>`<option value="${escAttr(p)}"${p===cur?' selected':''}>${escapeHtml(p)}</option>`).join('')+`<option value="${ADD_PERSON}">+ Add new person…</option>`}
+function addPerson(name){name=(name||'').trim();if(!name)return '';if(!peopleList.includes(name))peopleList.push(name);if(!dedication[name])dedication[name]={hours:settings.hoursPerDay,mode:'day'};return name}
+function startPersonEdit(cell,t){
+  cell.innerHTML=`<select class="cellsel">${personOptions(t.person)}</select>`;
+  const sel=cell.querySelector('select');let handled=false;
+  const done=()=>{if(handled)return;handled=true;let v=sel.value;
+    if(v===ADD_PERSON){const n=addPerson(prompt('New person name:'));if(!n)return render();v=n}
+    else if(v&&!peopleList.includes(v))addPerson(v);
+    t.person=v;render()};
+  sel.onchange=done;sel.onblur=done;sel.focus();try{sel.showPicker&&sel.showPicker()}catch(e){}
+}
 function startPredEdit(cell,t){const cur=predText(t);cell.innerHTML=`<input value="${escAttr(cur)}" placeholder="1FS; 10FS">`;const inp=cell.querySelector('input');inp.focus();inp.select();let handled=false;const done=()=>{if(handled)return;handled=true;setPredecessors(t,inp.value)};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter')inp.blur();if(ev.key==='Escape'){handled=true;render()}}}
 function startDateEdit(cell,t,which){const cur=which==='start'?t.start:(t.milestone?t.start:t.end);cell.innerHTML=`<input type="date" value="${cur||''}">`;const inp=cell.querySelector('input');inp.focus();let handled=false;const done=()=>{if(handled)return;handled=true;const v=inp.value;if(!v||v===cur)return render();if(which==='start')onStartEdited(t,v);else onEndEdited(t,v)};inp.onblur=done;inp.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();inp.blur()}if(ev.key==='Escape'){handled=true;render()}}}
 
@@ -808,7 +822,7 @@ function valEditor(t,col){
   const v=getVal(t,col);
   if(col.type==='status'){return `<select data-col="${col.id}"><option value="">—</option>${Object.keys(STATUS).map(s=>`<option value="${escAttr(s)}"${s===v?' selected':''}>${s}</option>`).join('')}</select>`}
   if(col.type==='label'){const ch=col.options&&col.options.choices||[];return `<select data-col="${col.id}"><option value="">—</option>${ch.map(c=>`<option value="${escAttr(c)}"${c===v?' selected':''}>${c}</option>`).join('')}</select>`}
-  if(col.type==='person')return `<input data-col="${col.id}" list="peopleDL" value="${escAttr(v)}">`;
+  if(col.type==='person')return `<select data-col="${col.id}" class="cellsel">${personOptions(v)}</select>`;
   if(col.type==='date')return `<input type="date" data-col="${col.id}" value="${v||''}">`;
   if(col.type==='number')return `<input type="number" data-col="${col.id}" value="${escAttr(v)}">`;
   if(col.type==='checkbox')return `<label style="color:var(--slate)"><input type="checkbox" data-col="${col.id}" ${v?'checked':''} style="width:auto"></label>`;
@@ -843,7 +857,7 @@ function renderPanel(){
   const editableDates=leaf||t.manualDates;
   let h=field('ID', `<span class="ro">#${t.code!=null?t.code:'—'}</span>`);
   h+=field('Code', `<span class="ro" style="font-family:ui-monospace,Menlo,Consolas,monospace;font-weight:600;letter-spacing:.5px">${t.uid?escapeHtml(t.uid):'—'}</span>`);
-  h+=field('Person', leaf?`<input id="f-person" list="peopleDL" value="${escAttr(t.person||'')}">`:`<span class="ro">— (rolls up)</span>`);
+  h+=field('Person', leaf?`<select id="f-person" class="cellsel">${personOptions(t.person)}</select>`:`<span class="ro">— (rolls up)</span>`);
   h+=field('Start', editableDates?`<input type="date" id="f-start" value="${sVal||''}">`:`<span class="ro">${sVal?fmtShort(sVal):'—'}</span>`);
   h+=field('Finish', (editableDates&&!t.milestone)?`<input type="date" id="f-end" value="${eVal||''}">`:`<span class="ro">${t.milestone?'◆ milestone':(eVal?fmtShort(eVal):'—')}</span>`);
   h+=field('Effort', leaf?`<input type="text" inputmode="decimal" id="f-eff" value="${escAttr(effortText(t))}" placeholder="5, 8h, 2w, 1m, 1y">`:`<span class="ro">—</span>`);
@@ -852,7 +866,7 @@ function renderPanel(){
   for(const col of columns)h+=field(col.name, valEditor(t,col));
   body.innerHTML=`<p class="pmeta">${leaf?'Leaf task':'Summary'} · ${subtreeIds(t.id).length-1} sub-item(s)</p>`+h;
   if(leaf){
-    const P=body.querySelector('#f-person');if(P)P.onchange=()=>{const old=t.person,v=P.value.trim();t.person=v;if(v&&!peopleList.includes(v))peopleList.push(v);logAct(t,'Person',old,v);render();renderPanel()};
+    const P=body.querySelector('#f-person');if(P)P.onchange=()=>{const old=t.person;let v=P.value;if(v===ADD_PERSON){const n=addPerson(prompt('New person name:'));if(!n){renderPanel();return}v=n}else if(v&&!peopleList.includes(v))addPerson(v);t.person=v;logAct(t,'Person',old,v);render();renderPanel()};
     const bindDate=(el,old,fn)=>{if(!el)return;let done=false;const commit=()=>{if(done)return;done=true;if(el.value&&el.value!==old)fn(el.value)};el.onblur=commit;el.onkeydown=ev=>{if(ev.key==='Enter'){ev.preventDefault();el.blur()}if(ev.key==='Escape'){done=true;renderPanel()}}};
     bindDate(body.querySelector('#f-start'),t.start,v=>onStartEdited(t,v));
     bindDate(body.querySelector('#f-end'),t.end,v=>onEndEdited(t,v));
@@ -860,7 +874,7 @@ function renderPanel(){
     const MS=body.querySelector('#f-ms');if(MS)MS.onchange=()=>{t.milestone=MS.checked;if(MS.checked)t.end=t.start;logAct(t,'Milestone','',MS.checked);render();renderPanel()};
     const PR=body.querySelector('#f-pred');if(PR)PR.onchange=()=>setPredecessors(t,PR.value);
   }
-  for(const col of columns){const el=body.querySelector(`[data-col="${col.id}"]`);if(el)el.onchange=()=>setVal(t,col,col.type==='checkbox'?el.checked:el.value)}
+  for(const col of columns){const el=body.querySelector(`[data-col="${col.id}"]`);if(el)el.onchange=()=>{let v=col.type==='checkbox'?el.checked:el.value;if(col.type==='person'&&v===ADD_PERSON){const n=addPerson(prompt('New person name:'));if(!n){renderPanel();return}v=n}else if(col.type==='person'&&v&&!peopleList.includes(v))addPerson(v);setVal(t,col,v)}}
   ensurePeopleDL();
 }
 function openColumnsEditor(){
