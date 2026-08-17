@@ -17,9 +17,9 @@
     --shadow:0 1px 2px rgba(20,30,40,.06),0 2px 8px rgba(20,30,40,.05);
   }
   *{box-sizing:border-box}
-  html,body{margin:0;height:100%}
+  html,body{margin:0;height:100%;overflow:hidden}
   body{font:13px/1.4 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:var(--text);background:var(--bg)}
-  .app{display:flex;flex-direction:column;height:100vh}
+  .app{display:flex;flex-direction:column;height:100vh;min-width:0}
 
   .toolbar{display:flex;align-items:center;gap:12px;padding:9px 16px;border-bottom:1px solid var(--line);flex:0 0 auto;flex-wrap:wrap}
   .toolbar .title{font-weight:700;font-size:15px}
@@ -39,7 +39,7 @@
   #legend .chip{display:inline-flex;align-items:center;gap:6px}
   #legend .sw{width:12px;height:12px;border-radius:3px;display:inline-block}
 
-  .board{flex:1;overflow:auto;position:relative;background:var(--bg)}
+  .board{flex:1;overflow:auto;position:relative;background:var(--bg);min-width:0}
   .board.panning{cursor:grabbing;user-select:none}
   .inner{position:relative}
 
@@ -162,7 +162,7 @@
   .bar .h{position:absolute;top:0;bottom:0;width:7px;cursor:ew-resize;z-index:3}
   .bar .h.l{left:-1px} .bar .h.r{right:-1px}
   .bar.crit{outline:2px solid var(--danger);outline-offset:1px}
-  .summary{height:9px;top:calc((var(--rowH) - 9px)/2 - 1px);background:var(--summary);border-radius:2px;cursor:default;box-shadow:none}
+  .summary{position:absolute;height:9px;top:calc((var(--rowH) - 9px)/2 - 1px);background:var(--summary);border-radius:2px;cursor:default;box-shadow:none}
   .summary::before,.summary::after{content:"";position:absolute;top:100%;border-top:6px solid var(--summary);width:0;height:0}
   .summary::before{left:0;border-right:6px solid transparent}
   .summary::after{right:0;border-left:6px solid transparent}
@@ -284,6 +284,9 @@
   .cres{width:0;flex:0 0 0;position:relative;align-self:stretch;z-index:9}
   .cres::after{content:"";position:absolute;left:-4px;width:9px;top:0;bottom:0;cursor:col-resize}
   .cres:hover::after{background:linear-gradient(90deg,transparent,rgba(31,157,99,.55),transparent)}
+  .panelResizer{position:absolute;top:0;right:-5px;width:11px;height:100%;cursor:col-resize;z-index:9}
+  .panelResizer::after{content:"";position:absolute;left:5px;top:0;bottom:0;width:2px;background:transparent;transition:background .15s}
+  .panelResizer:hover::after,.panelResizer.drag::after{background:var(--green)}
   @media print{
     .toolbar,#legend,.hint,.rowmenu,.drag-handle,.linkdot,.drop-line{display:none!important}
     .board{overflow:visible!important;height:auto!important}
@@ -311,7 +314,7 @@
   <div class="board" id="board">
     <div class="inner" id="inner">
       <div class="head" id="head">
-        <div class="corner"><div class="cols"><div class="c-id">ID</div><span class="cres" data-c="id"></span><div class="c-sp"></div><div class="c-name">Activity</div><span class="cres" data-c="name"></span><div class="c-person">Person</div><span class="cres" data-c="person"></span><div class="c-start">Start</div><span class="cres" data-c="start"></span><div class="c-finish">Finish</div><span class="cres" data-c="finish"></span><div class="c-eff">Effort</div><span class="cres" data-c="effort"></span><div class="c-pred">Pred.</div><span class="cres" data-c="pred"></span><div style="width:22px;flex:0 0 22px"></div></div></div>
+        <div class="corner"><div class="cols"><div class="c-id">ID</div><span class="cres" data-c="id"></span><div class="c-sp"></div><div class="c-name">Activity</div><span class="cres" data-c="name"></span><div class="c-person">Person</div><span class="cres" data-c="person"></span><div class="c-start">Start</div><span class="cres" data-c="start"></span><div class="c-finish">Finish</div><span class="cres" data-c="finish"></span><div class="c-eff">Effort</div><span class="cres" data-c="effort"></span><div class="c-pred">Pred.</div><span class="cres" data-c="pred"></span><div style="width:22px;flex:0 0 22px"></div></div><div class="panelResizer" id="panelResizer" title="Arraste para redimensionar o painel"></div></div>
         <div class="timehead" id="timehead"></div>
       </div>
       <div class="rows" id="rows"></div>
@@ -1310,6 +1313,17 @@ function botAnswer(q){
   return "I can answer about counts, dates, critical path, dependencies, effort, people and workload — but I can't add or change anything. Try naming a task, e.g. \"dependencies of Front-end\", or type \"help\".";
 }
 document.querySelectorAll('.cres').forEach(h=>h.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();const c=h.dataset.c,x0=e.clientX,w0=colW[c];document.body.style.cursor='col-resize';document.body.style.userSelect='none';const mv=ev=>{colW[c]=Math.max(24,w0+(ev.clientX-x0));applyColW();computeTreeW();applyTreeW()};const up=()=>{document.body.style.cursor='';document.body.style.userSelect='';localStorage.setItem('lunesgantt.colW',JSON.stringify(colW));document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);render()};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)}));
+/* Resize the whole tree PANEL (drag the tree/timeline divider) — scales all columns proportionally */
+(function(){const pr=document.getElementById('panelResizer');if(!pr)return;
+  const MIN={id:24,name:80,person:50,start:44,finish:44,effort:40,pred:50};
+  pr.addEventListener('mousedown',e=>{e.preventDefault();e.stopPropagation();
+    const x0=e.clientX,snap=Object.assign({},colW),sum=Object.keys(snap).reduce((a,k)=>a+snap[k],0);
+    document.body.style.cursor='col-resize';document.body.style.userSelect='none';pr.classList.add('drag');
+    const mv=ev=>{let sc=(sum+(ev.clientX-x0))/sum;sc=Math.max(0.34,Math.min(1.8,sc));for(const k in snap)colW[k]=Math.max(MIN[k],Math.round(snap[k]*sc));applyColW();computeTreeW();applyTreeW()};
+    const up=()=>{document.body.style.cursor='';document.body.style.userSelect='';pr.classList.remove('drag');localStorage.setItem('lunesgantt.colW',JSON.stringify(colW));document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);render()};
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+})();
 
 let _toastT;function toast(msg){let el=$('_toast');if(!el){el=document.createElement('div');el.id='_toast';el.style.cssText='position:fixed;left:50%;bottom:52px;transform:translateX(-50%);background:#2b3033;color:#fff;padding:9px 14px;border-radius:8px;font-size:12px;z-index:95;box-shadow:0 6px 24px rgba(0,0,0,.2);max-width:80vw;text-align:center;transition:opacity .3s';document.body.appendChild(el)}el.textContent=msg;el.style.opacity='1';clearTimeout(_toastT);_toastT=setTimeout(()=>el.style.opacity='0',3400)}
 
