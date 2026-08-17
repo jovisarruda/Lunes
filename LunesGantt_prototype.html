@@ -44,7 +44,7 @@
   .inner{position:relative}
 
   .head{position:sticky;top:0;z-index:6;display:flex;height:var(--headH);background:var(--bg);border-bottom:1px solid var(--line)}
-  .corner{position:sticky;left:0;z-index:7;width:var(--treeW);flex:0 0 var(--treeW);background:var(--bg);border-right:1px solid var(--line);display:flex;align-items:flex-end}
+  .corner{position:relative;z-index:7;transform:translateX(var(--sx,0px));width:var(--treeW);flex:0 0 var(--treeW);background:var(--bg);border-right:1px solid var(--line);display:flex;align-items:flex-end}
   .corner .cols{display:flex;width:100%;padding:0 8px 7px 8px;gap:8px}
   .corner .c-name{flex:1;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
   .corner .c-id{width:34px;flex:0 0 34px;text-align:right;padding-right:6px;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
@@ -89,7 +89,7 @@
   .trow:hover .tcell{background:var(--panel)}
   .trow.dragging{opacity:.35}
   .trow.drop-into .tcell{box-shadow:inset 0 0 0 2px var(--green)}
-  .tcell{position:sticky;left:0;z-index:5;width:var(--treeW);flex:0 0 var(--treeW);background:var(--bg);border-right:1px solid var(--line);border-bottom:1px solid var(--line2);display:flex;align-items:center;padding-right:6px}
+  .tcell{position:relative;z-index:5;transform:translateX(var(--sx,0px));width:var(--treeW);flex:0 0 var(--treeW);background:var(--bg);border-right:1px solid var(--line);border-bottom:1px solid var(--line2);display:flex;align-items:center;padding-right:6px}
   .track{position:relative;flex:0 0 auto;border-bottom:1px solid var(--line2)}
   .grid-col{position:absolute;top:0;bottom:0;width:0;border-left:1px solid var(--line2)}
   .grid-col.month{border-left:1px solid var(--line)}
@@ -573,6 +573,8 @@ function renderRows(){
   const rows=$('rows');rows.innerHTML='';
   const vis=visibleRows(),px=PX[zoom],gridHTML=buildGrid();
   rowIndex={};vis.forEach((t,i)=>rowIndex[t.id]=i);
+  // Grid drawn ONCE behind all rows (was per-row => rows×days DOM nodes, froze at day-zoom over long spans)
+  const gridLayer=document.createElement('div');gridLayer.className='gridLayer';gridLayer.style.cssText='position:absolute;left:'+treeW+'px;top:0;width:'+totalW+'px;height:'+((vis.length+1)*ROWH)+'px;pointer-events:none';gridLayer.innerHTML=gridHTML;rows.appendChild(gridLayer);
   for(const t of vis){
     const idx=rowIndex[t.id];
     const row=document.createElement('div');row.className='trow';row.dataset.id=t.id;
@@ -602,7 +604,7 @@ function renderRows(){
     if(canPred){prc.title=pv;prc.onclick=()=>startPredEdit(prc,t)}
     const mn=document.createElement('div');mn.className='rowmenu';mn.textContent='⋮';mn.title='Actions';mn.addEventListener('click',e=>{e.stopPropagation();openMenu(mn,t)});
     tc.append(idc,dh,nameCell,pc,sc,ec,eff,prc,mn);
-    const tk=document.createElement('div');tk.className='track';tk.style.width=totalW+'px';tk.innerHTML=gridHTML;
+    const tk=document.createElement('div');tk.className='track';tk.style.width=totalW+'px';
     renderBar(tk,t,leaf);
     row.append(tc,tk);rows.appendChild(row);
   }
@@ -1062,6 +1064,9 @@ function rowDragUp(){document.removeEventListener('mousemove',rowDragMove);docum
 const board=$('board');
 board.addEventListener('mousedown',e=>{if(e.target.closest('.bar,.milestone,.summary,.h,.tcell,.rowmenu,.drag-handle,.menu,.linkdot,.col-resizer,.cres,.corner')||e.target.closest('svg')&&e.target.tagName==='path'&&e.target.classList.contains('dep'))return;const sx=e.clientX,sy=e.clientY,sl=board.scrollLeft,st=board.scrollTop;board.classList.add('panning');const mv=ev=>{board.scrollLeft=sl-(ev.clientX-sx);board.scrollTop=st-(ev.clientY-sy)};const up=()=>{board.classList.remove('panning');document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up)};document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up)});
 board.addEventListener('wheel',e=>{if(e.shiftKey){board.scrollLeft+=e.deltaY;e.preventDefault()}},{passive:false});
+/* Pin the left tree panel during horizontal scroll (position:sticky was unreliable here): drive one CSS var per frame */
+let _sxRaf=0;function pinTree(){document.documentElement.style.setProperty('--sx',board.scrollLeft+'px')}
+board.addEventListener('scroll',()=>{if(_sxRaf)return;_sxRaf=requestAnimationFrame(()=>{_sxRaf=0;pinTree()})},{passive:true});
 $('zoom').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;zoom=b.dataset.z;[...$('zoom').children].forEach(x=>x.classList.toggle('on',x===b));render()});
 $('btnCrit').addEventListener('click',()=>{critOn=!critOn;$('btnCrit').classList.toggle('on',critOn);render();if(critOn)showCriticalPopup()});
 function collapseAll(){const anyOpen=tasks.some(t=>!isLeaf(t)&&!t.collapsed);tasks.forEach(t=>{if(!isLeaf(t))t.collapsed=anyOpen});render()}
