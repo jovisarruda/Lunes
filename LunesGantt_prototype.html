@@ -361,12 +361,24 @@ const CONN=new URLSearchParams(location.search).get('board');
 const SB=CONN?window.supabase.createClient('https://ybzrpqgofxkzaqasfsna.supabase.co','sb_publishable_0I8ZhiGBgfjWKBwTHV3TSA_11Kj3Jid'):null;
 let COL={},DEFGROUP=null,GROUPS=[],SHADOW={items:{},links:{}},SYNCT=null,MYNAME='You';
 const _cv=(it,cid)=>cid&&it.col_values?(it.col_values[cid]??null):null;
+// PostgREST caps each request at ~1000 rows — fetch collections in 1000-row pages so nothing is silently dropped (read-only).
+async function fetchAllPaged(makeQuery){
+  const all=[];let from=0;const size=1000;
+  for(;;){
+    const {data,error}=await makeQuery().range(from,from+size-1);
+    if(error){console.error('fetchAllPaged',error);break}
+    all.push(...(data||[]));
+    if(!data||data.length<size)break;
+    from+=size;
+  }
+  return {data:all,error:null};
+}
 async function loadFromDB(){
   const [gc,cc,ic,lc,bc]=await Promise.all([
     SB.from('groups').select('*').eq('board_id',CONN).order('position'),
     SB.from('board_columns').select('*').eq('board_id',CONN).eq('scope','item').order('position'),
-    SB.from('items').select('*').eq('board_id',CONN).eq('archived',false).order('position'),
-    SB.from('links').select('*').eq('board_id',CONN),
+    fetchAllPaged(()=>SB.from('items').select('*').eq('board_id',CONN).eq('archived',false).order('position').order('id')),
+    fetchAllPaged(()=>SB.from('links').select('*').eq('board_id',CONN).order('id')),
     SB.from('boards').select('settings,name').eq('id',CONN).single()
   ]);
   DEFGROUP=(gc.data&&gc.data[0]&&gc.data[0].id)||null;
@@ -1094,7 +1106,7 @@ function renderKb(){const el=$('kanban');const cols=Object.keys(STATUS).length?O
  let h='<div class="kbwrap">';for(const s of cols){const cards=leaves.filter(t=>(t.status||'')===s);h+=`<div class="kbcol" data-st="${escAttr(s)}"><div class="kbhead"><span class="kbdot" style="background:${STATUS[s]||'#c4c4c4'}"></span>${esc(s)} <span class="kbn">${cards.length}</span></div><div class="kbbody" data-st="${escAttr(s)}">`+cards.map(t=>`<div class="kbcard" draggable="true" data-id="${t.id}"><div class="kbc-nm">${esc(t.name)}</div><div class="kbc-meta">#${t.code!=null?t.code:''} ${t.person?'· '+esc(t.person):''}${t.start?' · '+fmtShort(t.start):''}</div></div>`).join('')+'</div></div>'}
  const none=leaves.filter(t=>!STATUS[t.status||'']);if(none.length){h+=`<div class="kbcol" data-st=""><div class="kbhead">— <span class="kbn">${none.length}</span></div><div class="kbbody" data-st="">`+none.map(t=>`<div class="kbcard" draggable="true" data-id="${t.id}"><div class="kbc-nm">${esc(t.name)}</div><div class="kbc-meta">#${t.code!=null?t.code:''} ${t.person?'· '+esc(t.person):''}</div></div>`).join('')+'</div></div>'}
  h+='</div>';el.innerHTML=h;
- el.querySelectorAll('.kbcard').forEach(c=>c.addEventListener('dragstart',e=>e.dataTransfer.setData('id',c.dataset.id)));
+ el.querySelectorAll('.kbcard').forEach(c=>{c.addEventListener('dragstart',e=>e.dataTransfer.setData('id',c.dataset.id));c.addEventListener('click',()=>{const t=byId(c.dataset.id);if(t)openDetails(t)});});
  el.querySelectorAll('.kbbody').forEach(b=>{b.addEventListener('dragover',e=>{e.preventDefault();b.classList.add('over')});b.addEventListener('dragleave',()=>b.classList.remove('over'));b.addEventListener('drop',e=>{e.preventDefault();b.classList.remove('over');const id=e.dataTransfer.getData('id');const t=byId(id);if(t){t.status=b.dataset.st;render();renderKb()}})});
 }
 /* ===== Calendar (by start date) — Gantt-specific ===== */
