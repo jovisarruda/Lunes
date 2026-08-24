@@ -377,17 +377,34 @@ async function loadBoards(){
   if(boards.length&&!curBoard)selectBoard(boards[0].id);
   else if(!boards.length){$('boardTitle').textContent='Create your first board →';$('content').innerHTML=''}
 }
+// Busca paginada genérica: contorna o teto de ~1000 linhas por requisição do PostgREST.
+// Sem isso, boards/consultas com +1000 itens (ex.: Purchase após a migração histórica) só
+// carregam os primeiros 1000 e o resto "some" da tela apesar de estar no banco. É SÓ leitura.
+async function fetchAllPaged(makeQuery){
+  const all=[];let from=0;const size=1000;
+  for(;;){
+    const {data,error}=await makeQuery().range(from,from+size-1);
+    if(error){console.error('fetchAllPaged',error);break}
+    all.push(...(data||[]));
+    if(!data||data.length<size)break;
+    from+=size;
+  }
+  return all;
+}
+async function fetchAllItems(id){
+  return fetchAllPaged(()=>sb.from('items').select('*').eq('board_id',id).eq('archived',false).order('position'));
+}
 async function selectBoard(id){
   curBoard=boards.find(b=>b.id===id);
   renderBoardNav();
   setBoardTitle(curBoard.name);
-  const [g,c,i,a]=await Promise.all([
+  const [g,c,a]=await Promise.all([
     sb.from('groups').select('*').eq('board_id',id).order('position'),
     sb.from('board_columns').select('*').eq('board_id',id).order('position'),
-    sb.from('items').select('*').eq('board_id',id).eq('archived',false).order('position'),
     sb.from('automations').select('*').eq('board_id',id)
   ]);
-  groups=g.data||[];cols=c.data||[];items=i.data||[];automations=a.data||[];
+  const allItems=await fetchAllItems(id);
+  groups=g.data||[];cols=c.data||[];items=allItems;automations=a.data||[];
   // B2 — dependency links (project boards only)
   if(curBoard.template==='project'){const {data:lk}=await sb.from('links').select('*').eq('board_id',id);links=lk||[]}
   else links=[];
@@ -1296,12 +1313,12 @@ function aiFmtCols(it,cols){
   return p.length?' ('+p.join(', ')+')':'';
 }
 async function aiFetchAll(){
-  const [{data:bs},{data:gs},{data:cs},{data:its}]=await Promise.all([
+  const [{data:bs},{data:gs},{data:cs}]=await Promise.all([
     sb.from('boards').select('*').order('position'),
     sb.from('groups').select('*').order('position'),
-    sb.from('board_columns').select('*').order('position'),
-    sb.from('items').select('*').eq('archived',false)
+    sb.from('board_columns').select('*').order('position')
   ]);
+  const its=await fetchAllPaged(()=>sb.from('items').select('*').eq('archived',false)); // paginado (evita teto de 1000)
   return {bs:bs||[],gs:gs||[],cs:cs||[],its:its||[]};
 }
 function aiDigestText(all){
@@ -2011,7 +2028,7 @@ async function dbValues(col){
   const s=col.options&&col.options.source;if(!s)return [];
   const key=s+'|'+(col.options.field||'_name');
   if(dbCache[key])return dbCache[key];
-  const {data}=await sb.from('items').select('*').eq('board_id',s).is('parent_id',null).order('position');
+  const data=await fetchAllPaged(()=>sb.from('items').select('*').eq('board_id',s).is('parent_id',null).order('position')); // paginado (evita teto de 1000)
   const field=col.options.field||'_name';
   const list=(data||[]).filter(it=>!isPending(it)).map(it=>({uid:it.uid,val:field==='_name'?it.name:(it.col_values?.[field]??'')})).filter(o=>o.val!==''&&o.val!=null);
   dbCache[key]=list;return list;
@@ -2029,7 +2046,7 @@ async function loadMirrorSources(){
   mirrorSrc={};
   const srcIds=[...new Set(cols.filter(c=>c.type==='database'&&c.options&&c.options.mode==='connect'&&c.options.source).map(c=>c.options.source))];
   for(const bid of srcIds){
-    const {data}=await sb.from('items').select('*').eq('board_id',bid);
+    const data=await fetchAllPaged(()=>sb.from('items').select('*').eq('board_id',bid)); // paginado (evita teto de 1000)
     const map={};(data||[]).forEach(it=>{map[String(it.uid)]=it});
     mirrorSrc[bid]=map;
   }
@@ -2329,7 +2346,7 @@ async function runTimeAutomations(){
   const {data:autos}=await sb.from('automations').select('*').eq('enabled',true);
   const timeAutos=(autos||[]).filter(a=>['date_arrives','monthly','auto_date_duplication'].includes(a.trigger.type));
   if(!timeAutos.length)return;
-  const {data:allItems}=await sb.from('items').select('*').eq('archived',false);
+  const allItems=await fetchAllPaged(()=>sb.from('items').select('*').eq('archived',false)); // paginado (evita teto de 1000)
   const {data:allBoards}=await sb.from('boards').select('*');
   const {data:allGroups}=await sb.from('groups').select('*');
   const {data:allCols}=await sb.from('board_columns').select('*');
