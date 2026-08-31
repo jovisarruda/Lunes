@@ -1,0 +1,824 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Lunes — Finance Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+<style>
+:root{
+  --bg:#f4f6f7;--panel:#fff;--border:#d5d9e2;--text:#1d1f28;--muted:#7d8296;
+  --accent:#4f6ef7;--accent-soft:#eef1fe;--danger:#e2445c;--ok:#00c875;--green:#00a97a;--green-soft:#e6f6f0;
+  --grid:#e7eaf0;
+  --s1:#2a78d6;--s2:#eb6834;--s3:#1baf7a;--s4:#eda100;--s5:#e87ba4;--s6:#008300;--s7:#4a3aa7;--s8:#e34948;--s9:#9aa1b3;
+  --inc:#1baf7a;--exp:#e34948;--net:#2a78d6;
+  font-size:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--text);height:100vh;overflow:hidden;display:flex;flex-direction:column}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+select{font:inherit;color:inherit;border:1px solid var(--border);border-radius:6px;padding:5px 7px;background:#fff;outline:none;font-size:12.5px;max-width:200px}
+.mono{font-variant-numeric:tabular-nums;font-feature-settings:"tnum"}
+
+#top{background:var(--panel);border-bottom:1px solid var(--border);padding:10px 18px 0;flex-shrink:0}
+#top .row1{display:flex;align-items:center;gap:14px}
+.title{font-size:17px;font-weight:700}
+.title span{color:var(--green)}
+.proto{font-size:10.5px;font-weight:700;letter-spacing:.6px;background:var(--accent-soft);color:var(--accent);padding:3px 7px;border-radius:5px}
+.spacer{flex:1}
+.seg{display:flex;background:var(--bg);border:1px solid var(--border);border-radius:7px;padding:2px;gap:2px}
+.seg button{padding:5px 11px;border-radius:5px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--panel);color:var(--text);box-shadow:0 1px 3px rgba(20,30,60,.10)}
+.ghost{padding:6px 11px;border-radius:6px;border:1px solid var(--border);color:var(--muted);font-size:12.5px;font-weight:600}
+.ghost:hover{color:var(--text);background:var(--accent-soft)}
+#yearTabs{display:flex;gap:2px;margin-top:10px}
+#yearTabs button{padding:8px 18px;font-weight:600;color:var(--muted);border-bottom:2px solid transparent;font-size:13.5px}
+#yearTabs button.on{color:var(--green);border-bottom-color:var(--green)}
+#months{display:flex;gap:6px;padding:9px 18px;background:var(--panel);border-bottom:1px solid var(--border);flex-shrink:0;overflow-x:auto}
+.mchip{flex:1;min-width:62px;border:1px solid var(--border);border-radius:7px;padding:5px 4px 6px;text-align:center;background:var(--bg);cursor:pointer}
+.mchip .ml{font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.4px}
+.mchip .mv{font-size:11px;margin-top:1px;color:var(--muted)}
+.mchip.on{background:var(--green-soft);border-color:var(--green)}
+.mchip.on .ml,.mchip.on .mv{color:var(--green)}
+.mchip.dim{opacity:.45}
+
+#canvas{flex:1;overflow:auto;padding:14px 18px 60px;position:relative}
+#grid{position:relative;margin:0 auto;max-width:1720px}
+.blk{position:absolute;background:var(--panel);border:1px solid var(--border);border-radius:12px;
+     box-shadow:0 1px 3px rgba(20,30,60,.05);display:flex;flex-direction:column;overflow:hidden;transition:box-shadow .15s}
+.blk:hover{box-shadow:0 4px 14px rgba(20,30,60,.10)}
+.blk.drag{opacity:.85;box-shadow:0 12px 30px rgba(20,30,60,.20);z-index:50;transition:none}
+.bh{display:flex;align-items:center;gap:6px;padding:9px 11px 0;cursor:grab;flex-shrink:0}
+.bh:active{cursor:grabbing}
+.bt{font-size:11.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--muted);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bf{font-size:11px;color:var(--muted);background:var(--bg);border-radius:20px;padding:1px 7px;white-space:nowrap;
+    overflow:hidden;text-overflow:ellipsis;max-width:50%;flex-shrink:0}
+.bf.ov{background:var(--accent-soft);color:var(--accent)}
+.bcog{margin-left:auto;opacity:0;color:var(--muted);padding:2px 4px;border-radius:5px;font-size:13px;flex-shrink:0}
+.blk:hover .bcog{opacity:1}
+.bcog:hover{background:var(--accent-soft);color:var(--accent)}
+.bcog.act{opacity:1;color:var(--accent)}
+.bb{flex:1;min-height:0;padding:2px 11px 10px;position:relative;display:flex;flex-direction:column}
+.bb>svg{flex:1;min-height:0}
+.bb>.lg{flex-shrink:0}
+.rz{position:absolute;right:0;bottom:0;width:16px;height:16px;cursor:nwse-resize;opacity:0}
+.blk:hover .rz{opacity:1}
+.rz::after{content:'';position:absolute;right:4px;bottom:4px;width:7px;height:7px;
+  border-right:2px solid var(--border);border-bottom:2px solid var(--border)}
+.ghostbox{position:absolute;border:2px dashed var(--green);background:var(--green-soft);opacity:.5;border-radius:12px;z-index:1;pointer-events:none}
+
+.kpi{height:100%;display:flex;flex-direction:column;justify-content:center;gap:1px;overflow:hidden}
+.kv{font-size:clamp(18px,1.9vw,27px);font-weight:700;line-height:1.12;letter-spacing:-.6px;white-space:nowrap}
+.kd{font-size:11px;font-weight:600;white-space:nowrap}
+.kd.up{color:var(--green)}.kd.dn{color:var(--danger)}.kd.flat{color:var(--muted)}
+.ksub{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.spark{margin-top:5px}
+
+svg{display:block;width:100%;height:100%;overflow:visible}
+.ax{font-size:10.5px;fill:var(--muted)}
+.gl{stroke:var(--grid);stroke-width:1}
+.lg{display:flex;flex-wrap:wrap;gap:3px 12px;font-size:11.5px;color:var(--muted);padding:2px 0 0}
+.lg i{width:9px;height:9px;border-radius:2px;display:inline-block;margin-right:5px;vertical-align:-1px}
+.lgrow{display:flex;align-items:center;white-space:nowrap}
+.lgv{color:var(--text);font-weight:600;margin-left:5px}
+.empty{flex:1;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:12.5px}
+.scroll{flex:1;min-height:0;overflow-y:auto}
+.piewrap{display:flex;height:100%;gap:10px;align-items:center;min-height:0}
+.pieL{flex:1;min-width:0;overflow-y:auto;max-height:100%;font-size:11.5px}
+.pr{display:flex;align-items:center;gap:6px;padding:2px 0;border-radius:4px}
+.pr:hover{background:var(--bg)}
+.pr .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.pr .vl{font-weight:600;font-variant-numeric:tabular-nums}
+.pr .pc{color:var(--muted);width:34px;text-align:right;font-variant-numeric:tabular-nums}
+/* horizontal rank rows */
+.hr{display:grid;grid-template-columns:1fr 78px;gap:8px;align-items:center;padding:3px 0;font-size:11.5px}
+.hr .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+.hr .bar{height:9px;border-radius:4px;background:var(--s1);min-width:2px}
+.hr .vl{text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.hrw{display:flex;flex-direction:column;gap:1px}
+/* cost x income comparison rows */
+.cx{display:grid;grid-template-columns:minmax(90px,1.5fr) 3fr 66px 66px;gap:8px;align-items:center;padding:3px 0;font-size:11.5px;border-radius:5px}
+.cx:hover{background:var(--bg)}
+.cx .nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text);font-weight:500}
+.cx .tw{display:flex;flex-direction:column;gap:2px}
+.cx .b{height:8px;border-radius:4px;min-width:2px}
+.cx .v{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+.cxh{display:grid;grid-template-columns:minmax(90px,1.5fr) 3fr 66px 66px;gap:8px;font-size:10px;text-transform:uppercase;
+  letter-spacing:.4px;color:var(--muted);padding-bottom:3px;border-bottom:1px solid var(--grid);margin-bottom:3px}
+.cxh span:nth-child(3),.cxh span:nth-child(4){text-align:right}
+/* table */
+table{width:100%;border-collapse:collapse;font-size:11.5px}
+th{text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.4px;color:var(--muted);font-weight:700;
+   padding:0 6px 4px 0;position:sticky;top:0;background:var(--panel);border-bottom:1px solid var(--grid)}
+td{padding:3px 6px 3px 0;border-bottom:1px solid var(--grid);color:var(--muted)}
+td.nm{color:var(--text);max-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+td.v{text-align:right;font-weight:600;font-variant-numeric:tabular-nums;color:var(--text);white-space:nowrap}
+th.v{text-align:right}
+/* pending */
+.pnd{display:flex;flex-direction:column;gap:8px;height:100%;overflow-y:auto}
+.pndg{border-left:3px solid var(--border);padding-left:9px}
+.pndg .h{font-size:10px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:700}
+.pndg .n{font-size:17px;font-weight:700;font-variant-numeric:tabular-nums}
+.pndg .s{font-size:11px;color:var(--muted)}
+.crumb{font-size:11px;color:var(--accent);cursor:pointer;padding:2px 0}
+
+#pop{position:fixed;z-index:200;background:var(--panel);border:1px solid var(--border);border-radius:10px;
+  box-shadow:0 12px 34px rgba(20,30,60,.18);padding:12px;width:264px;display:none}
+#pop h4{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);margin-bottom:8px}
+#pop label{display:block;font-size:11px;color:var(--muted);margin:8px 0 3px;font-weight:600}
+#pop select{width:100%;max-width:none}
+#pop .foot{display:flex;gap:6px;margin-top:12px}
+#pop .foot button{flex:1;padding:6px;border-radius:6px;font-size:12px;font-weight:600}
+#pop .clr{border:1px solid var(--border);color:var(--muted)}
+#pop .ok{background:var(--green);color:#fff}
+#tip{position:fixed;z-index:300;background:#1d1f28;color:#fff;border-radius:8px;padding:9px 11px;font-size:12px;
+  pointer-events:none;display:none;box-shadow:0 6px 20px rgba(0,0,0,.25);max-width:330px}
+#tip b{display:block;font-size:12.5px;margin-bottom:4px}
+#tip .tv{font-variant-numeric:tabular-nums;display:flex;justify-content:space-between;gap:14px;line-height:1.6}
+#tip .tv span:last-child{font-weight:600}
+#tip .tm{color:#b9bdcc;font-size:11px}
+#tip hr{border:none;border-top:1px solid #3a3c48;margin:5px 0}
+
+#loader{position:fixed;inset:0;background:rgba(244,246,247,.96);z-index:500;display:none;align-items:center;justify-content:center}
+#loader .lcard{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:26px 28px;width:470px;box-shadow:0 12px 40px rgba(20,30,60,.12)}
+#loader .lt{font-size:17px;font-weight:700;margin-bottom:8px}
+#loader p{font-size:13px;color:var(--muted);margin-bottom:8px}
+#loader ol{font-size:12.5px;color:var(--muted);margin:0 0 14px 18px;line-height:1.7}
+#loader code{background:var(--bg);padding:1px 5px;border-radius:4px;font-size:12px;color:var(--text)}
+#loader .drop{border:2px dashed var(--border);border-radius:10px;padding:26px;text-align:center;color:var(--muted);font-size:13px}
+#loader .drop.hot{border-color:var(--green);background:var(--green-soft);color:var(--green)}
+#lstatus{font-size:12px;color:var(--green);margin-top:10px;min-height:16px;white-space:pre-line}
+</style></head>
+<body>
+
+<div id="top">
+  <div class="row1">
+    <div class="title">Lunes<span>·</span>Finance</div>
+    <div class="proto" id="protoBadge">PROTOTYPE</div>
+    <div class="spacer"></div>
+    <div class="seg" id="basisSeg">
+      <button data-b="real" class="on">Realized</button>
+      <button data-b="plan">Planned</button>
+    </div>
+    <select id="gProj"></select>
+    <button class="ghost" id="btnReset">Reset layout</button>
+  </div>
+  <div id="yearTabs"></div>
+</div>
+<div id="months"></div>
+<div id="canvas"><div id="grid"></div></div>
+
+<div id="pop"></div><div id="tip"></div>
+<div id="loader"><div class="lcard">
+  <div class="lt">Finance Dashboard — load the data</div>
+  <p>This prototype runs offline. Drop the Monday exports here (or pick them):</p>
+  <ol>
+    <li><code>FIN_Purchase_*.csv</code> &nbsp;(Configs Monday Purchase)</li>
+    <li><code>FIN_Purchase_Archived_*.csv</code></li>
+    <li><code>FIN_Income_*.csv</code> &nbsp;(Configs Monday Income)</li>
+  </ol>
+  <div class="drop" id="drop">Drop CSV files here</div>
+  <input type="file" id="fin" multiple accept=".csv" style="margin-top:10px">
+  <div id="lstatus"></div>
+</div></div>
+
+<script>
+let DATA = /*__DATA__*/ null;
+
+/* ===== Supabase connection (dashboard board = ?board=<id>). Offline CSV mode when absent. ===== */
+const CONN=new URLSearchParams(location.search).get('board');
+const SB=CONN?window.supabase.createClient('https://ybzrpqgofxkzaqasfsna.supabase.co','sb_publishable_0I8ZhiGBgfjWKBwTHV3TSA_11Kj3Jid'):null;
+let SRC={purchase:[],income:[],projDb:null};   // resolved source boards, for the info line
+
+/* ===================== hardcoded rules ===================== */
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const PAL=['--s1','--s2','--s3','--s4','--s5','--s6','--s7','--s8'];
+const TOPAY=['2. To Be Paid','3. AutoPay'];
+const INC_DONE=['Received'];
+const INC_OPEN=['To Be Received','ACTIVE !'];
+const REIMB_OPEN=['0. Awaiting','1. Paid by emplyee','1. Paid by employee','3. Reimbursed to the Employee'];
+/* rows that never count as expense: cancelled anywhere, or returned to the store */
+const isDead = r => /cancel/i.test(r.s1||'') || /cancel/i.test(r.s2||'') || /cancel/i.test(r.s3||'')
+                 || /Reimbursed by the store/i.test(r.s4||'') || /archiv/i.test(r.s1||'')||/archiv/i.test(r.s2||'');
+
+/* ===================== helpers ===================== */
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const nf0=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:0});
+const nf1=new Intl.NumberFormat('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+function money(v){const a=Math.abs(v),s=v<0?'-':'';
+  if(a>=1e6)return s+'R$ '+nf1.format(a/1e6)+' mi';
+  if(a>=1e3)return s+'R$ '+nf0.format(a/1e3)+' mil';
+  return s+'R$ '+nf0.format(a)}
+const moneyF=v=>(v<0?'-':'')+'R$ '+new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Math.abs(v));
+const pct=(a,b)=>!b?'—':nf1.format(a/b*100)+'%';
+const ym=d=>d?d.slice(0,7):null, yr=d=>d?+d.slice(0,4):null, moN=d=>d?+d.slice(5,7):null;
+const shortP=p=>!p?'Overhead':(p.length>26?p.slice(0,25)+'…':p);
+const cvar=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+/* ===================== normalize ===================== */
+let P=[],I=[],ALL_YEARS=[],PROJECTS=[],CATS=[],PBS=[],PMS=[],SUPS=[];
+let COST_ALL={},INC_ALL={};
+function normalize(){
+  P=(DATA?DATA.purchase:[]).filter(r=>!isDead(r)).map(r=>({
+    n:r.n,v:r.v||0,dReal:r.pd||r.dd,dPlan:r.dd||r.pd,
+    cat:r.c||'No category',proj:r.pj||'',pb:r.pb||'—',pm:r.pm||'—',sup:r.sp||'—',
+    open:TOPAY.includes(r.s2), reimb:REIMB_OPEN.includes(r.s4), src:r.src}));
+  I=(DATA?DATA.income:[]).map(r=>({
+    n:r.n,v:r.v||0,dReal:r.du||r.rq,dPlan:r.rq||r.du,
+    type:r.ds||'—',proj:r.pj||'',done:INC_DONE.includes(r.st),open:INC_OPEN.includes(r.st),st:r.st}));
+  ALL_YEARS=[...new Set([...P.map(r=>yr(r.dReal)),...I.map(r=>yr(r.dReal))].filter(Boolean))].sort();
+  PROJECTS=[...new Set([...P.map(r=>r.proj),...I.map(r=>r.proj)].filter(Boolean))].sort();
+  CATS=[...new Set(P.map(r=>r.cat))].sort();
+  PBS=[...new Set(P.map(r=>r.pb))].sort();
+  PMS=[...new Set(P.map(r=>r.pm))].sort();
+  SUPS=[...new Set(P.map(r=>r.sup))].sort();
+  COST_ALL={};P.forEach(r=>{const k=r.proj||'';COST_ALL[k]=(COST_ALL[k]||0)+r.v});
+  INC_ALL={};I.filter(r=>r.done).forEach(r=>{const k=r.proj||'';INC_ALL[k]=(INC_ALL[k]||0)+r.v});
+}
+normalize();
+
+/* ===================== state ===================== */
+const DEFAULT_LAYOUT=[
+  {id:'k1',t:'kpi',k:'income',x:0,y:0,w:2,h:1},
+  {id:'k2',t:'kpi',k:'expense',x:2,y:0,w:2,h:1},
+  {id:'k3',t:'kpi',k:'net',x:4,y:0,w:2,h:1},
+  {id:'k4',t:'kpi',k:'topay',x:6,y:0,w:2,h:1},
+  {id:'k5',t:'kpi',k:'torecv',x:8,y:0,w:2,h:1},
+  {id:'k6',t:'kpi',k:'burn',x:10,y:0,w:2,h:1},
+  {id:'b1',t:'bars',x:0,y:1,w:12,h:3},
+  {id:'cx',t:'projcmp',x:0,y:4,w:12,h:4},
+  {id:'p1',t:'pie',k:'cat',x:0,y:8,w:4,h:3},
+  {id:'p2',t:'pie',k:'proj',x:4,y:8,w:4,h:3},
+  {id:'p3',t:'pie',k:'inctype',x:8,y:8,w:4,h:3},
+  {id:'p4',t:'pie',k:'pb',x:0,y:11,w:4,h:3},
+  {id:'p5',t:'pie',k:'pm',x:4,y:11,w:4,h:3},
+  {id:'r1',t:'rank',k:'sup',x:8,y:11,w:4,h:3},
+  {id:'t1',t:'table',x:0,y:14,w:8,h:4},
+  {id:'pn',t:'pending',x:8,y:14,w:4,h:4}
+];
+let ST={year:ALL_YEARS.includes(2026)?2026:(ALL_YEARS[ALL_YEARS.length-1]||2026),
+  month:0,basis:'real',gproj:'',blocks:JSON.parse(JSON.stringify(DEFAULT_LAYOUT)),drill:{}};
+const LS='lunes_findash_proto_v2';
+if(!CONN)try{const s=JSON.parse(localStorage.getItem(LS)||'null');if(s&&s.blocks)ST=Object.assign(ST,s)}catch(e){}
+function save(){
+  if(CONN)return saveDB();
+  try{localStorage.setItem(LS,JSON.stringify({blocks:ST.blocks,year:ST.year,month:ST.month,basis:ST.basis}))}catch(e){}}
+
+/* ===================== filtering ===================== */
+const dateOf=r=>ST.basis==='real'?r.dReal:r.dPlan;
+const effY=f=>(f&&f.y!=null)?f.y:ST.year;
+const effM=f=>(f&&f.m!=null)?f.m:ST.month;
+function inPeriod(d,f){
+  if(!d)return false;
+  const y=effY(f),m=effM(f);
+  if(y!=='all'&&yr(d)!==y)return false;
+  if(m&&moN(d)!==m)return false;
+  return true;
+}
+function fp(f){
+  const proj=(f&&f.proj)||ST.gproj;
+  return P.filter(r=>inPeriod(dateOf(r),f)
+    &&(!proj||r.proj===proj)&&(!(f&&f.cat)||r.cat===f.cat)
+    &&(!(f&&f.pb)||r.pb===f.pb)&&(!(f&&f.pm)||r.pm===f.pm));
+}
+function fi(f){
+  const proj=(f&&f.proj)||ST.gproj;
+  return I.filter(r=>inPeriod(dateOf(r),f)&&(!proj||r.proj===proj));
+}
+const sum=a=>a.reduce((s,r)=>s+r.v,0);
+function prevPeriod(f){
+  const y=effY(f),m=effM(f);
+  if(y==='all')return null;
+  if(m)return m===1?{y:y-1,m:12}:{y,m:m-1};
+  return {y:y-1,m:0};
+}
+function periodLabel(f){
+  const y=effY(f),m=effM(f);
+  return y==='all'?'All years':((m?MONTHS[m-1]+' ':'')+y);
+}
+
+/* ===================== grid ===================== */
+const COLS=12,GAP=12,RH=100;
+const colW=()=>($('grid').clientWidth-GAP*(COLS-1))/COLS;
+function place(el,b){const cw=colW();
+  el.style.left=Math.round(b.x*(cw+GAP))+'px';
+  el.style.top=Math.round(b.y*(RH+GAP))+'px';
+  el.style.width=Math.round(b.w*cw+(b.w-1)*GAP)+'px';
+  el.style.height=Math.round(b.h*RH+(b.h-1)*GAP)+'px'}
+const hitsB=(a,b)=>a.x<b.x+b.w&&b.x<a.x+a.w&&a.y<b.y+b.h&&b.y<a.y+a.h;
+function resolve(movedId){
+  const moved=ST.blocks.find(x=>x.id===movedId);
+  for(let pass=0;pass<50;pass++){let bad=false;
+    const ord=[...ST.blocks].sort((a,b)=>a.y-b.y||a.x-b.x);
+    for(let i=0;i<ord.length;i++)for(let j=i+1;j<ord.length;j++){
+      const a=ord[i],b=ord[j];if(!hitsB(a,b))continue;
+      const victim=a===moved?b:(b===moved?a:(a.y<b.y||(a.y===b.y&&a.x<=b.x)?b:a));
+      const other=victim===a?b:a;victim.y=other.y+other.h;bad=true}
+    if(!bad)break}
+  [...ST.blocks].sort((a,b)=>a.y-b.y||a.x-b.x).forEach(b=>{
+    while(b.y>0){const t={...b,y:b.y-1};if(ST.blocks.some(o=>o!==b&&hitsB(t,o)))break;b.y--}});
+}
+const gridH=()=>Math.max(...ST.blocks.map(b=>b.y+b.h))*(RH+GAP);
+function renderGrid(){
+  const g=$('grid');g.innerHTML='';
+  ST.blocks.forEach(b=>{
+    const el=document.createElement('div');el.className='blk';el.dataset.id=b.id;
+    el.innerHTML=`<div class="bh"><span class="bt">${esc(titleOf(b))}</span>${fchip(b)}
+      <button class="bcog${hasF(b)?' act':''}" title="Filters">⚙</button></div>
+      <div class="bb"></div><div class="rz"></div>`;
+    place(el,b);g.appendChild(el);
+    el.querySelector('.bh').addEventListener('pointerdown',e=>{if(!e.target.closest('.bcog'))startDrag(e,b,el)});
+    el.querySelector('.rz').addEventListener('pointerdown',e=>startResize(e,b,el));
+    el.querySelector('.bcog').addEventListener('click',e=>{e.stopPropagation();openPop(e.currentTarget,b)});
+    drawBlock(b,el.querySelector('.bb'));
+  });
+  g.style.height=gridH()+'px';
+}
+function redraw(){ST.blocks.forEach(b=>{
+  const el=$('grid').querySelector(`[data-id="${b.id}"]`);if(!el)return;
+  el.querySelector('.bh').innerHTML=`<span class="bt">${esc(titleOf(b))}</span>${fchip(b)}
+    <button class="bcog${hasF(b)?' act':''}" title="Filters">⚙</button>`;
+  el.querySelector('.bh').addEventListener('pointerdown',e=>{if(!e.target.closest('.bcog'))startDrag(e,b,el)});
+  el.querySelector('.bcog').addEventListener('click',e=>{e.stopPropagation();openPop(e.currentTarget,b)});
+  drawBlock(b,el.querySelector('.bb'))})}
+
+let dragCtx=null,ghost=null;
+function mkGhost(){ghost=document.createElement('div');ghost.className='ghostbox';$('grid').appendChild(ghost)}
+function startDrag(e,b,el){e.preventDefault();
+  dragCtx={mode:'move',b,el,sx:e.clientX,sy:e.clientY,ox:b.x,oy:b.y,cw:colW()};
+  el.classList.add('drag');mkGhost();place(ghost,b);el.setPointerCapture(e.pointerId);
+  el.onpointermove=onDrag;el.onpointerup=endDrag}
+function startResize(e,b,el){e.preventDefault();e.stopPropagation();
+  dragCtx={mode:'size',b,el,sx:e.clientX,sy:e.clientY,ow:b.w,oh:b.h,cw:colW()};
+  el.classList.add('drag');mkGhost();place(ghost,b);el.setPointerCapture(e.pointerId);
+  el.onpointermove=onDrag;el.onpointerup=endDrag}
+function onDrag(e){if(!dragCtx)return;const c=dragCtx,cw=c.cw;
+  const dx=Math.round((e.clientX-c.sx)/(cw+GAP)),dy=Math.round((e.clientY-c.sy)/(RH+GAP));
+  if(c.mode==='move'){c.nx=Math.max(0,Math.min(COLS-c.b.w,c.ox+dx));c.ny=Math.max(0,c.oy+dy);
+    c.el.style.transform=`translate(${e.clientX-c.sx}px,${e.clientY-c.sy}px)`;
+    place(ghost,{x:c.nx,y:c.ny,w:c.b.w,h:c.b.h})}
+  else{c.nw=Math.max(2,Math.min(COLS-c.b.x,c.ow+dx));c.nh=Math.max(1,c.oh+dy);
+    place(ghost,{x:c.b.x,y:c.b.y,w:c.nw,h:c.nh})}}
+function endDrag(){if(!dragCtx)return;const c=dragCtx;
+  c.el.classList.remove('drag');c.el.style.transform='';c.el.onpointermove=null;c.el.onpointerup=null;
+  if(c.mode==='move'){if(c.nx!=null){c.b.x=c.nx;c.b.y=c.ny}}else{if(c.nw!=null){c.b.w=c.nw;c.b.h=c.nh}}
+  if(ghost){ghost.remove();ghost=null}
+  resolve(c.b.id);dragCtx=null;save();renderGrid()}
+addEventListener('resize',()=>renderGrid());
+
+/* ===================== titles / chips ===================== */
+const KPI_META={income:{t:'Income',sub:'Received'},expense:{t:'Expense',sub:'Net of refunds'},
+  net:{t:'Result',sub:'Income − Expense'},topay:{t:'To pay',sub:'To Be Paid + AutoPay'},
+  torecv:{t:'To receive',sub:'To Be Received + Active'},burn:{t:'Monthly burn',sub:'Year average'}};
+function titleOf(b){
+  if(b.t==='kpi')return KPI_META[b.k].t;
+  if(b.t==='bars')return 'Income × Expense per month';
+  if(b.t==='projcmp')return 'Project — cost × income';
+  if(b.t==='rank')return 'Top suppliers';
+  if(b.t==='table')return 'Biggest entries';
+  if(b.t==='pending')return 'Pending';
+  return {cat:'Expense by category',proj:'Expense by project',inctype:'Income by type',
+          pb:'Expense by paid by',pm:'Expense by payment mode'}[b.k]}
+const hasF=b=>{const f=b.f||{};return !!(f.proj||f.cat||f.pb||f.pm||f.y!=null||f.m!=null)};
+function fchip(b){
+  const f=b.f||{};
+  const per = (b.k==='burn') ? (effY(f)==='all'?'All years':String(effY(f))) : periodLabel(f);
+  const p=[per];
+  if(f.proj)p.push(shortP(f.proj));
+  if(f.cat)p.push(f.cat);if(f.pb)p.push(f.pb);if(f.pm)p.push(f.pm);
+  const ov=f.y!=null||f.m!=null;
+  const txt=p.join(' · ');
+  return `<span class="bf${ov?' ov':''}" title="${esc(txt)}">${esc(txt)}</span>`}
+
+/* ===================== tooltip ===================== */
+function tip(html,e){const t=$('tip');t.innerHTML=html;t.style.display='block';
+  const r=t.getBoundingClientRect();
+  t.style.left=Math.min(innerWidth-r.width-8,Math.max(8,e.clientX+14))+'px';
+  t.style.top=Math.max(8,Math.min(innerHeight-r.height-8,e.clientY-r.height-12))+'px'}
+const untip=()=>$('tip').style.display='none';
+const row=(l,v,c)=>`<div class="tv"><span class="tm">${l}</span><span${c?` style="color:${c}"`:''}>${v}</span></div>`;
+/* the rich project tooltip — used by every project view */
+function projTip(proj,f){
+  const cost=sum(fp(Object.assign({},f,{proj:proj||'__none__'})).filter(r=>r.proj===proj));
+  const inc=sum(fi(Object.assign({},f,{proj:proj||'__none__'})).filter(r=>r.proj===proj&&r.done));
+  const cAll=COST_ALL[proj]||0, iAll=INC_ALL[proj]||0;
+  return `<b>${esc(proj||'Overhead / no project')}</b>
+    <div class="tm" style="margin-bottom:3px">${periodLabel(f)}</div>
+    ${row('Cost in period',moneyF(cost),'#f59090')}
+    ${row('… of the project total',pct(cost,cAll))}
+    ${row('Income in period',moneyF(inc),'#7ce0b8')}
+    ${row('… of the project total',pct(inc,iAll))}<hr>
+    ${row('Total cost (all time)',moneyF(cAll))}
+    ${row('Total income (all time)',moneyF(iAll))}
+    ${row('Accumulated result',moneyF(iAll-cAll),iAll-cAll>=0?'#7ce0b8':'#f59090')}
+    ${row('Margin',iAll?pct(iAll-cAll,iAll):'—')}`}
+
+/* ===================== blocks ===================== */
+function drawBlock(b,host){
+  ({kpi:drawKpi,bars:drawBars,pie:drawPie,projcmp:drawProjCmp,rank:drawRank,
+    table:drawTable,pending:drawPending})[b.t](b,host)}
+
+/* ---- KPI ---- */
+function kpiValue(k,f){
+  if(k==='burn'){const yf=Object.assign({},f,{m:0}),p2=fp(yf);
+    return sum(p2)/(new Set(p2.map(r=>ym(dateOf(r)))).size||1)}
+  const pr=fp(f),inc=fi(f);
+  if(k==='income')return sum(inc.filter(r=>r.done));
+  if(k==='expense')return sum(pr);
+  if(k==='net')return sum(inc.filter(r=>r.done))-sum(pr);
+  if(k==='topay')return sum(pr.filter(r=>r.open));
+  if(k==='torecv')return sum(inc.filter(r=>r.open));
+  return 0}
+function drawKpi(b,host){
+  const f=b.f||{},v=kpiValue(b.k,f);
+  let pv=prevPeriod(f);
+  if(b.k==='burn'){const y=effY(f);pv=y==='all'?null:{y:y-1,m:0}}
+  let dh='';
+  if(pv){const pval=kpiValue(b.k,Object.assign({},f,pv));
+    if(Math.abs(pval)>0.01){const d=(v-pval)/Math.abs(pval)*100;
+      const good=(b.k==='income'||b.k==='net')?d>=0:d<0;
+      const cls=Math.abs(d)<0.5?'flat':(good?'up':'dn');
+      dh=`<div class="kd ${cls}">${d>=0?'▲':'▼'} ${nf1.format(Math.abs(d))}% <span style="color:var(--muted);font-weight:500">vs ${pv.m?MONTHS[pv.m-1]:pv.y}</span></div>`}}
+  const col=b.k==='income'?'--inc':b.k==='expense'?'--exp':b.k==='net'?(v>=0?'--inc':'--exp'):'--text';
+  host.innerHTML=`<div class="kpi">
+    <div class="kv mono" style="color:var(${col})" title="${moneyF(v)}">${money(v)}</div>
+    ${dh||'<div class="kd flat">—</div>'}
+    <div class="ksub">${esc(KPI_META[b.k].sub)}</div>
+    ${b.h>1?'<div class="spark"></div>':''}</div>`;
+  if(b.h>1)drawSpark(host.querySelector('.spark'),b.k,f,cvar(col==='--text'?'--s1':col))}
+function drawSpark(host,k,f,color){
+  const y=effY(f);if(y==='all'){host.style.display='none';return}
+  const vals=MONTHS.map((_,i)=>kpiValue(k,Object.assign({},f,{y,m:i+1})));
+  const mx=Math.max(...vals.map(Math.abs))||1,W=100,H=18;
+  const pts=vals.map((v,i)=>`${(i/11*W).toFixed(1)},${(H-Math.abs(v)/mx*H).toFixed(1)}`).join(' ');
+  const cur=effM(f);
+  const dot=cur?`<circle cx="${((cur-1)/11*W).toFixed(1)}" cy="${(H-Math.abs(vals[cur-1])/mx*H).toFixed(1)}" r="2.6" fill="${color}"/>`:'';
+  host.innerHTML=`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="height:18px">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6" vector-effect="non-scaling-stroke" opacity=".65"/>${dot}</svg>`}
+
+/* ---- monthly bars (the one block that is a year overview by design) ---- */
+function drawBars(b,host){
+  const f=b.f||{},y=effY(f),years=y==='all'?ALL_YEARS:null;
+  const buckets=years?years.map(v=>({lab:String(v),key:v})):MONTHS.map((m,i)=>({lab:m,key:i+1}));
+  const inc=[],exp=[];
+  buckets.forEach(bk=>{const ff=years?Object.assign({},f,{y:bk.key,m:0}):Object.assign({},f,{y,m:bk.key});
+    inc.push(sum(fi(ff).filter(r=>r.done)));exp.push(sum(fp(ff)))});
+  const net=buckets.map((_,i)=>inc[i]-exp[i]);
+  const hi=Math.max(1,...inc,...exp,...net),lo=Math.min(0,...net);
+  const W=Math.max(360,host.clientWidth-4),H=Math.max(110,host.clientHeight-30);
+  const PADL=56,PADB=22,PADT=8,PADR=6,iw=W-PADL-PADR,ih=H-PADT-PADB,n=buckets.length;
+  const step=iw/n,bw=Math.max(5,Math.min(24,(step-10)/2));
+  const yv=v=>PADT+ih-((v-lo)/(hi-lo)*ih),y0=yv(0);
+  let ticks='',bars='',labs='',hl='',hits='',netpts=[];
+  for(let i=0;i<=4;i++){const v=lo+(hi-lo)/4*i,yy=yv(v);
+    ticks+=`<line class="gl" x1="${PADL}" x2="${W-PADR}" y1="${yy.toFixed(1)}" y2="${yy.toFixed(1)}"/><text class="ax" x="${PADL-8}" y="${(yy+3.5).toFixed(1)}" text-anchor="end">${money(v).replace('R$ ','')}</text>`}
+  ticks+=`<line x1="${PADL}" x2="${W-PADR}" y1="${y0.toFixed(1)}" y2="${y0.toFixed(1)}" stroke="var(--border)"/>`;
+  buckets.forEach((bk,i)=>{
+    const cx=PADL+step*i+step/2,x1=cx-bw-1,x2=cx+1;
+    const h1=Math.max(inc[i]>0?2:0,inc[i]/(hi-lo)*ih),h2=Math.max(exp[i]>0?2:0,exp[i]/(hi-lo)*ih);
+    if(!years&&effM(f)===bk.key)hl+=`<rect x="${(cx-step/2).toFixed(1)}" y="${PADT}" width="${step.toFixed(1)}" height="${ih.toFixed(1)}" fill="var(--green-soft)" opacity=".8"/>`;
+    bars+=`<rect x="${x1.toFixed(1)}" y="${(y0-h1).toFixed(1)}" width="${bw.toFixed(1)}" height="${h1.toFixed(1)}" rx="4" fill="var(--inc)"/>`
+        + `<rect x="${x2.toFixed(1)}" y="${(y0-h2).toFixed(1)}" width="${bw.toFixed(1)}" height="${h2.toFixed(1)}" rx="4" fill="var(--exp)"/>`;
+    labs+=`<text class="ax" x="${cx.toFixed(1)}" y="${(H-PADB+15).toFixed(1)}" text-anchor="middle">${bk.lab}</text>`;
+    hits+=`<rect x="${(cx-step/2).toFixed(1)}" y="${PADT}" width="${step.toFixed(1)}" height="${ih.toFixed(1)}" fill="transparent" data-i="${i}" style="cursor:pointer"/>`;
+    netpts.push(cx.toFixed(1)+','+yv(net[i]).toFixed(1))});
+  host.innerHTML=`<svg viewBox="0 0 ${W} ${H}">${hl}${ticks}${bars}
+    <polyline points="${netpts.join(' ')}" fill="none" stroke="var(--net)" stroke-width="2" stroke-dasharray="5 4" opacity=".85"/>
+    ${labs}${hits}</svg>
+    <div class="lg"><span class="lgrow"><i style="background:var(--inc)"></i>Income<b class="lgv mono">${money(inc.reduce((a,c)=>a+c,0))}</b></span>
+    <span class="lgrow"><i style="background:var(--exp)"></i>Expense<b class="lgv mono">${money(exp.reduce((a,c)=>a+c,0))}</b></span>
+    <span class="lgrow"><i style="background:var(--net);height:3px"></i>Result<b class="lgv mono">${money(net.reduce((a,c)=>a+c,0))}</b></span>
+    <span class="lgrow" style="opacity:.7">${years?'per year':'whole year — the highlight is the month in view'}</span></div>`;
+  host.querySelectorAll('rect[data-i]').forEach(r=>{
+    r.onmousemove=e=>{const i=+r.dataset.i;
+      tip(`<b>${buckets[i].lab}${years?'':' '+y}</b>${row('Income',moneyF(inc[i]),'#7ce0b8')}${row('Expense',moneyF(exp[i]),'#f59090')}${row('Result',moneyF(net[i]))}${years?'':'<div class="tm">click to open this month</div>'}`,e)};
+    r.onmouseleave=untip;
+    r.onclick=()=>{untip();if(!years){ST.month=buckets[+r.dataset.i].key;save();renderMonths();redraw()}}})}
+
+/* ---- pies (individual values, no grouping) ---- */
+const ORD={cat:()=>CATS,proj:()=>PROJECTS,pb:()=>PBS,pm:()=>PMS,inctype:()=>['Locação','P&D','Implementação','Visita Tecnica','Locação + Seguro','Venda']};
+function colorAt(b,k,rank){
+  if(k==='No category'||k==='—'||k==='Overhead / no project')return cvar('--s9');
+  if(rank>=7)return cvar('--s9');
+  const ord=(ORD[b.k]||(()=>[]))();
+  let i=ord.indexOf(k);
+  if(i<0){let h=0;for(const c of k)h=(h*31+c.charCodeAt(0))>>>0;i=h}
+  return cvar(PAL[i%8])}
+function pieRows(b){
+  const f=b.f||{};
+  if(b.k==='inctype')return {rows:fi(f).filter(r=>r.done),key:r=>r.type};
+  if(b.k==='proj')return {rows:fp(f),key:r=>r.proj||'Overhead / no project'};
+  return {rows:fp(f),key:r=>({cat:'cat',pb:'pb',pm:'pm'}[b.k]?r[{cat:'cat',pb:'pb',pm:'pm'}[b.k]]:'—')}}
+function drawPie(b,host){
+  const {rows,key}=pieRows(b);
+  const m=new Map();rows.forEach(r=>{const k=key(r)||'—';m.set(k,(m.get(k)||0)+r.v)});
+  const arr=[...m].filter(([,v])=>v>0).sort((a,c)=>c[1]-a[1]);
+  const total=arr.reduce((s,x)=>s+x[1],0);
+  if(!arr.length){host.innerHTML='<div class="empty">No data for this period</div>';return}
+  const slices=arr.slice(0,7);
+  const restV=arr.slice(7).reduce((s,x)=>s+x[1],0);
+  if(restV>0)slices.push(['Other ('+(arr.length-7)+')',restV]);
+  const R=52,C=60,IR=30;let a0=-Math.PI/2,paths='';
+  slices.forEach(([k,v],i)=>{
+    const ang=v/total*Math.PI*2,a1=a0+ang,big=ang>Math.PI?1:0;
+    const col=/^Other \(/.test(k)?cvar('--s9'):colorAt(b,k,i);
+    const p=(r,a)=>[C+r*Math.cos(a),C+r*Math.sin(a)];
+    const [x0,y0]=p(R,a0),[x1,y1]=p(R,a1),[x2,y2]=p(IR,a1),[x3,y3]=p(IR,a0);
+    paths+=`<path d="M${x0.toFixed(2)} ${y0.toFixed(2)}A${R} ${R} 0 ${big} 1 ${x1.toFixed(2)} ${y1.toFixed(2)}L${x2.toFixed(2)} ${y2.toFixed(2)}A${IR} ${IR} 0 ${big} 0 ${x3.toFixed(2)} ${y3.toFixed(2)}Z" fill="${col}" stroke="var(--panel)" stroke-width="2" data-k="${esc(k)}"/>`;
+    a0=a1});
+  const D=Math.max(96,Math.min(host.clientHeight-6,190));
+  host.innerHTML=`<div class="piewrap">
+    <div style="width:${D}px;flex-shrink:0">
+      <svg viewBox="0 0 120 120" style="height:${D}px;width:${D}px">${paths}
+        <text x="60" y="57" text-anchor="middle" class="ax" style="font-size:9px">TOTAL</text>
+        <text x="60" y="70" text-anchor="middle" style="font-size:12px;font-weight:700;fill:var(--text)">${money(total).replace('R$ ','')}</text></svg></div>
+    <div class="pieL">${arr.map(([k,v],i)=>`<div class="pr" data-k="${esc(k)}">
+      <i style="width:9px;height:9px;border-radius:2px;background:${colorAt(b,k,i)};flex-shrink:0"></i>
+      <span class="nm" title="${esc(k)}">${esc(k)}</span>
+      <span class="vl mono">${money(v).replace('R$ ','')}</span>
+      <span class="pc">${nf0.format(v/total*100)}%</span></div>`).join('')}</div></div>`;
+  const f=b.f||{};
+  host.querySelectorAll('[data-k]').forEach(el=>{
+    const k=el.dataset.k;if(/^Other \(/.test(k)){el.onmousemove=e=>tip(`<b>Other</b>${row('Total',moneyF(restV))}<div class="tm">the full list is on the right</div>`,e);el.onmouseleave=untip;return}
+    const v=m.get(k)||0;
+    el.onmousemove=e=>tip(b.k==='proj'
+      ? projTip(k==='Overhead / no project'?'':k,f)
+      : `<b>${esc(k)}</b><div class="tm" style="margin-bottom:3px">${periodLabel(f)}</div>${row('Value',moneyF(v))}${row('Share',pct(v,total))}`,e);
+    el.onmouseleave=untip})}
+
+/* ---- project cost × income ---- */
+function drawProjCmp(b,host){
+  const f=b.f||{};
+  const pr=fp(f),inc=fi(f).filter(r=>r.done);
+  const m=new Map();
+  const add=(k,i,v)=>{const o=m.get(k)||[0,0];o[i]+=v;m.set(k,o)};
+  pr.forEach(r=>add(r.proj||'',0,r.v));inc.forEach(r=>add(r.proj||'',1,r.v));
+  let arr=[...m].filter(([,v])=>v[0]>0||v[1]>0).sort((a,c)=>(c[1][0]+c[1][1])-(a[1][0]+a[1][1]));
+  if(!arr.length){host.innerHTML='<div class="empty">No project activity in this period</div>';return}
+  const rowsFit=Math.max(3,Math.floor((host.clientHeight-34)/22));
+  const shown=arr.slice(0,rowsFit),hidden=arr.length-shown.length;
+  const mx=Math.max(...arr.map(([,v])=>Math.max(v[0],v[1])))||1;
+  host.innerHTML=`<div class="cxh"><span>Project</span><span>Cost ▮ Income ▮</span><span>Cost</span><span>Income</span></div>
+    <div class="scroll">${shown.map(([k,v])=>`<div class="cx" data-p="${esc(k)}">
+      <span class="nm" title="${esc(k||'Overhead / no project')}">${esc(k||'Overhead / no project')}</span>
+      <span class="tw"><span class="b" style="width:${(v[0]/mx*100).toFixed(1)}%;background:var(--exp)"></span>
+        <span class="b" style="width:${(v[1]/mx*100).toFixed(1)}%;background:var(--inc)"></span></span>
+      <span class="v" style="color:var(--exp)">${money(v[0]).replace('R$ ','')}</span>
+      <span class="v" style="color:var(--inc)">${v[1]?money(v[1]).replace('R$ ',''):'–'}</span></div>`).join('')}
+    ${hidden>0?`<div class="ax" style="font-size:10.5px;padding-top:4px">+ ${hidden} more project${hidden>1?'s':''} — make this block taller to see them</div>`:''}</div>`;
+  host.querySelectorAll('[data-p]').forEach(el=>{
+    el.onmousemove=e=>tip(projTip(el.dataset.p,f),e);el.onmouseleave=untip})}
+
+/* ---- rank (suppliers) ---- */
+function drawRank(b,host){
+  const f=b.f||{},m=new Map();
+  fp(f).forEach(r=>m.set(r.sup,(m.get(r.sup)||0)+r.v));
+  const arr=[...m].filter(([k,v])=>v>0&&k!=='—').sort((a,c)=>c[1]-a[1]);
+  if(!arr.length){host.innerHTML='<div class="empty">No data for this period</div>';return}
+  const n=Math.max(3,Math.floor((host.clientHeight-8)/31));
+  const shown=arr.slice(0,n),mx=shown[0][1];
+  host.innerHTML=`<div class="scroll hrw">${shown.map(([k,v])=>`<div class="hr" data-k="${esc(k)}">
+    <span><span class="nm" title="${esc(k)}">${esc(k)}</span>
+      <span class="bar" style="display:block;width:${(v/mx*100).toFixed(1)}%"></span></span>
+    <span class="vl">${money(v).replace('R$ ','')}</span></div>`).join('')}</div>`;
+  const tot=arr.reduce((s,x)=>s+x[1],0);
+  host.querySelectorAll('[data-k]').forEach(el=>{
+    const v=m.get(el.dataset.k);
+    el.onmousemove=e=>tip(`<b>${esc(el.dataset.k)}</b><div class="tm" style="margin-bottom:3px">${periodLabel(f)}</div>${row('Spent',moneyF(v))}${row('Share of suppliers',pct(v,tot))}`,e);
+    el.onmouseleave=untip})}
+
+/* ---- table ---- */
+function drawTable(b,host){
+  const f=b.f||{};
+  const rows=fp(f).slice().sort((a,c)=>Math.abs(c.v)-Math.abs(a.v)).slice(0,40);
+  if(!rows.length){host.innerHTML='<div class="empty">No entries for this period</div>';return}
+  host.innerHTML=`<div class="scroll"><table><thead><tr>
+    <th style="width:44%">Entry</th><th>Category</th><th>Project</th><th>Date</th><th class="v">Value</th></tr></thead>
+    <tbody>${rows.map(r=>`<tr><td class="nm" title="${esc(r.n)}">${esc(r.n)}</td>
+      <td>${esc(r.cat)}</td><td title="${esc(r.proj)}">${esc(shortP(r.proj))}</td>
+      <td>${esc((dateOf(r)||'').split('-').reverse().join('/'))}</td>
+      <td class="v"${r.v<0?' style="color:var(--inc)"':''}>${moneyF(r.v).replace('R$ ','')}</td></tr>`).join('')}</tbody></table></div>`}
+
+/* ---- pending ---- */
+function drawPending(b,host){
+  const f=b.f||{},pr=fp(f),inc=fi(f);
+  const g=(label,list,color,note)=>{const v=sum(list);
+    return `<div class="pndg" style="border-color:${color}">
+      <div class="h">${label}</div><div class="n" style="color:${color}">${money(v)}</div>
+      <div class="s">${list.length} item${list.length===1?'':'s'}${note?' · '+note:''}</div></div>`};
+  host.innerHTML=`<div class="pnd">
+    ${g('To pay',pr.filter(r=>r.open),cvar('--exp'),'To Be Paid + AutoPay')}
+    ${g('To receive',inc.filter(r=>r.open),cvar('--inc'),'To Be Received + Active')}
+    ${g('Open reimbursements',pr.filter(r=>r.reimb),cvar('--s4'),'not settled yet')}
+    ${g('No category',pr.filter(r=>r.cat==='No category'),cvar('--s9'),'needs filling in')}
+    ${g('No project',pr.filter(r=>!r.proj),cvar('--s9'),'counted as overhead')}
+  </div>`}
+
+/* ===================== filter popover ===================== */
+const opts=(list,cur,any)=>`<option value="">${any}</option>`+list.map(o=>`<option value="${esc(o)}"${o===cur?' selected':''}>${esc(o)}</option>`).join('');
+function openPop(btn,b){
+  const p=$('pop'),f=b.f||{};
+  const isInc=b.t==='pie'&&b.k==='inctype';
+  p.innerHTML=`<h4>Filter · ${esc(titleOf(b))}</h4>
+    <label>Period</label>
+    <div style="display:flex;gap:6px">
+      <select id="pfY"><option value="">Follow tab</option><option value="all"${f.y==='all'?' selected':''}>All years</option>
+        ${ALL_YEARS.map(y=>`<option value="${y}"${f.y===y?' selected':''}>${y}</option>`).join('')}</select>
+      <select id="pfM"><option value="">Follow tab</option><option value="0"${f.m===0?' selected':''}>Full year</option>
+        ${MONTHS.map((m,i)=>`<option value="${i+1}"${f.m===i+1?' selected':''}>${m}</option>`).join('')}</select></div>
+    <label>Project</label><select id="pfP">${opts(PROJECTS,f.proj,'All projects')}</select>
+    ${isInc?'':`<label>Category</label><select id="pfC">${opts(CATS,f.cat,'All categories')}</select>
+    <label>Paid by</label><select id="pfB">${opts(PBS,f.pb,'Anyone')}</select>
+    <label>Payment mode</label><select id="pfM2">${opts(PMS,f.pm,'Any mode')}</select>`}
+    <div class="foot"><button class="clr">Clear</button><button class="ok">Apply</button></div>`;
+  const r=btn.getBoundingClientRect();p.style.display='block';
+  p.style.left=Math.min(innerWidth-276,Math.max(8,r.right-264))+'px';
+  p.style.top=Math.min(innerHeight-p.offsetHeight-8,r.bottom+6)+'px';
+  p.querySelector('.clr').onclick=()=>{delete b.f;p.style.display='none';save();redraw()};
+  p.querySelector('.ok').onclick=()=>{
+    const g=id=>{const e=$(id);return e?e.value:''},nf={};
+    if(g('pfY'))nf.y=g('pfY')==='all'?'all':+g('pfY');
+    if(g('pfM')!=='')nf.m=+g('pfM');
+    if(g('pfP'))nf.proj=g('pfP');
+    if(g('pfC'))nf.cat=g('pfC');
+    if(g('pfB'))nf.pb=g('pfB');
+    if(g('pfM2'))nf.pm=g('pfM2');
+    if(Object.keys(nf).length)b.f=nf;else delete b.f;
+    p.style.display='none';save();redraw()}}
+document.addEventListener('mousedown',e=>{if(!e.target.closest('#pop')&&!e.target.closest('.bcog'))$('pop').style.display='none'});
+
+/* ===================== top bar ===================== */
+function renderYears(){
+  const t=$('yearTabs');
+  t.innerHTML=[...ALL_YEARS.map(y=>({v:y,l:String(y)})),{v:'all',l:'All years'}]
+    .map(o=>`<button data-y="${o.v}" class="${ST.year===o.v?'on':''}">${o.l}</button>`).join('');
+  t.querySelectorAll('button').forEach(bt=>bt.onclick=()=>{
+    ST.year=bt.dataset.y==='all'?'all':+bt.dataset.y;ST.month=0;save();renderYears();renderMonths();redraw()})}
+function renderMonths(){
+  const c=$('months');
+  if(ST.year==='all'){c.style.display='none';return}
+  c.style.display='flex';
+  const cells=[{k:0,l:'YEAR'}].concat(MONTHS.map((m,i)=>({k:i+1,l:m.toUpperCase()})));
+  c.innerHTML=cells.map(x=>{const v=sum(fp({y:ST.year,m:x.k}));
+    return `<div class="mchip${ST.month===x.k?' on':''}${v===0&&x.k?' dim':''}" data-m="${x.k}">
+      <div class="ml">${x.l}</div><div class="mv mono">${v?money(v).replace('R$ ',''):'–'}</div></div>`}).join('');
+  c.querySelectorAll('.mchip').forEach(el=>el.onclick=()=>{ST.month=+el.dataset.m;save();renderMonths();redraw()})}
+function renderTop(){
+  $('gProj').innerHTML=opts(PROJECTS,ST.gproj,'All projects (global)');
+  $('gProj').onchange=e=>{ST.gproj=e.target.value;renderMonths();redraw()};
+  $('basisSeg').querySelectorAll('button').forEach(bt=>{
+    bt.classList.toggle('on',bt.dataset.b===ST.basis);
+    bt.onclick=()=>{ST.basis=bt.dataset.b;save();renderTop();renderMonths();redraw()}});
+  $('btnReset').onclick=()=>{ST.blocks=JSON.parse(JSON.stringify(DEFAULT_LAYOUT));ST.drill={};save();renderGrid()}}
+
+/* ===================== CSV loader (prototype only) ===================== */
+function parseCSV(txt){
+  const rows=[];let row=[],cur='',q=false;txt=txt.replace(/^﻿/,'');
+  for(let i=0;i<txt.length;i++){const c=txt[i];
+    if(q){if(c==='"'){if(txt[i+1]==='"'){cur+='"';i++}else q=false}else cur+=c}
+    else if(c==='"')q=true;
+    else if(c===','){row.push(cur);cur=''}
+    else if(c==='\n'){row.push(cur);cur='';rows.push(row);row=[]}
+    else if(c!=='\r')cur+=c}
+  row.push(cur);if(row.length>1||row[0])rows.push(row);
+  return rows}
+const pnum=s=>{s=(s||'').trim().replace('R$','').trim();if(!s)return null;
+  if(s.includes(','))s=s.replace(/\./g,'').replace(',','.');
+  const v=parseFloat(s);return isNaN(v)?null:v};
+const pdate=s=>/^\d{4}-\d{2}-\d{2}/.test((s||'').trim())?s.trim().slice(0,10):null;
+const rowEmpty=r=>!r.some(x=>x.trim());
+function parsePurchase(rows,src){
+  const out=[];let hdr=null,mode=null,group=null;
+  const isGroup=i=>{for(let j=i+1;j<Math.min(i+3,rows.length);j++)if(!rowEmpty(rows[j]))return rows[j][0]==='Name';return false};
+  rows.forEach((r,i)=>{
+    if(rowEmpty(r)){mode=null;return}
+    if(r[0]==='Subitems'&&r[1]==='Name'){hdr={};r.forEach((h,k)=>hdr[h.trim()]=k);mode='sub';return}
+    if(r[0]==='Name'){mode='item';return}
+    if(r[0].trim()&&!r.slice(1).some(x=>x.trim())&&isGroup(i)){group=r[0].trim();mode=null;return}
+    if(mode==='sub'&&hdr&&!r[0].trim()){
+      const g=k=>hdr[k]!=null&&hdr[k]<r.length?r[hdr[k]].trim():'';
+      const n=g('Name'),v=pnum(g('Price'));if(!n&&v==null)return;
+      out.push({n,v:v||0,dd:pdate(g('Due Pay')),pd:pdate(g('Paid In')),
+        s1:g('1. Autorization'),s2:g('2. Payment'),s3:g('3. Processing'),s4:g('4. Reimbursement'),
+        c:g('Category'),pb:g('Paid By'),pm:g('Payment Mode'),sp:g('Supplier'),pj:g('Project'),grp:group||'',src})}});
+  return out}
+function parseIncome(rows){
+  const out=[];let hdr=null,group=null;
+  const isGroup=i=>{for(let j=i+1;j<Math.min(i+3,rows.length);j++)if(!rowEmpty(rows[j]))return rows[j][0]==='Name'&&rows[j][1]==='Subitems';return false};
+  rows.forEach((r,i)=>{
+    if(rowEmpty(r))return;
+    if(r[0]==='Name'&&r[1]==='Subitems'){hdr={};r.forEach((h,k)=>hdr[h.trim()]=k);return}
+    if(r[0]==='Subitems')return;
+    if(r[0].trim()&&!r.slice(1).some(x=>x.trim())&&isGroup(i)){group=r[0].trim();return}
+    if(hdr&&r[0].trim()){const g=k=>hdr[k]!=null&&hdr[k]<r.length?r[hdr[k]].trim():'';
+      out.push({n:g('Name'),v:pnum(g('Total (R$)'))||0,rq:pdate(g('Pay. Req. Date')),du:pdate(g('Pay. Due Date')),
+        st:g('Status'),ds:g('Description'),kw:pnum(g('KW')),pj:g('Financial | Projects Database'),grp:group||''})}});
+  return out}
+async function ingest(files){
+  const st=$('lstatus'),acc={purchase:[],income:[]},log=[];
+  for(const f of files){const rows=parseCSV(await f.text());
+    if(/income/i.test(f.name)){const r=parseIncome(rows);acc.income.push(...r);log.push(f.name+' → '+r.length+' income items')}
+    else{const src=/archiv/i.test(f.name)?'arch':'active';const r=parsePurchase(rows,src);acc.purchase.push(...r);log.push(f.name+' → '+r.length+' purchase sub-items')}}
+  if(!acc.purchase.length&&!acc.income.length){st.style.color='var(--danger)';st.textContent='Nothing recognised in those files.';return}
+  DATA=acc;normalize();st.style.color='var(--green)';st.textContent=log.join('\n');
+  ST.year=ALL_YEARS.includes(2026)?2026:(ALL_YEARS[ALL_YEARS.length-1]||2026);ST.month=0;
+  setTimeout(()=>{$('loader').style.display='none';boot()},400)}
+function initLoader(){
+  const L=$('loader'),d=$('drop');L.style.display='flex';
+  ['dragenter','dragover'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.add('hot')}));
+  ['dragleave','drop'].forEach(e=>d.addEventListener(e,ev=>{ev.preventDefault();d.classList.remove('hot')}));
+  d.addEventListener('drop',ev=>ingest([...ev.dataTransfer.files]));
+  L.addEventListener('dragover',ev=>ev.preventDefault());L.addEventListener('drop',ev=>ev.preventDefault());
+  $('fin').addEventListener('change',ev=>ingest([...ev.target.files]))}
+
+/* ===================== Supabase mode ===================== */
+async function fetchAllPaged(makeQuery){
+  const all=[];let from=0;const size=1000;
+  for(;;){const {data,error}=await makeQuery().range(from,from+size-1);
+    if(error){console.error('fetchAllPaged',error);break}
+    all.push(...(data||[]));if(!data||data.length<size)break;from+=size}
+  return all}
+const findCol=(cols,re,ty)=>cols.find(c=>re&&re.test(c.name))||(ty?cols.find(c=>c.type===ty):null);
+const cv=(it,c)=>c&&it.col_values?(it.col_values[c.id]??null):null;
+const txt=v=>v==null?'':String(v);
+
+async function loadFromDB(){
+  const {data:bs,error}=await SB.from('boards').select('id,name,template');
+  if(error)throw error;
+  const boards=bs||[];
+  SRC.purchase=boards.filter(b=>/purchase/i.test(b.name)&&b.template!=='dashboard');
+  SRC.income  =boards.filter(b=>/income/i.test(b.name)&&b.template!=='dashboard');
+  SRC.projDb  =boards.find(b=>/project/i.test(b.name)&&/database|^db/i.test(b.name))||null;
+
+  /* project database: uid -> name, so Income's connect column resolves to a readable project */
+  let projByUid={};
+  if(SRC.projDb){
+    const pit=await fetchAllPaged(()=>SB.from('items').select('id,uid,name,parent_id').eq('board_id',SRC.projDb.id).eq('archived',false));
+    pit.forEach(i=>{if(i.uid)projByUid[i.uid]=i.name;projByUid[i.id]=i.name});
+  }
+  const projName=v=>{const t=txt(v);return projByUid[t]||t};
+
+  const purchase=[],income=[];
+  for(const b of SRC.purchase){
+    const [cc,its]=await Promise.all([
+      SB.from('board_columns').select('*').eq('board_id',b.id).eq('scope','subitem').order('position'),
+      fetchAllPaged(()=>SB.from('items').select('*').eq('board_id',b.id).eq('archived',false).order('position'))]);
+    const c=cc.data||[];
+    const C={price:findCol(c,/^price$|pre[çc]o/i,'number'),due:findCol(c,/due\s*pay/i),paid:findCol(c,/paid\s*in/i),
+      s1:findCol(c,/autoriza|authoriza/i),s2:findCol(c,/^2\./i)||c.find(x=>/payment/i.test(x.name)&&!/mode/i.test(x.name)),
+      s3:findCol(c,/^3\.|processing/i),s4:findCol(c,/^4\.|reimburse/i),
+      cat:findCol(c,/categ/i),pb:findCol(c,/paid\s*by/i),pm:findCol(c,/pay(ment)?\s*mode/i),
+      sp:findCol(c,/supplier|fornecedor/i),pj:findCol(c,/project|projeto/i)};
+    const dates=c.filter(x=>x.type==='date');
+    if(!C.due)C.due=dates[0];if(!C.paid)C.paid=dates[1]||dates[0];
+    const src=/archiv/i.test(b.name)?'arch':'active';
+    its.filter(i=>i.parent_id&&!(i.col_values&&i.col_values._pending)).forEach(i=>{
+      purchase.push({n:i.name,v:+cv(i,C.price)||0,dd:txt(cv(i,C.due))||null,pd:txt(cv(i,C.paid))||null,
+        s1:txt(cv(i,C.s1)),s2:txt(cv(i,C.s2)),s3:txt(cv(i,C.s3)),s4:txt(cv(i,C.s4)),
+        c:txt(cv(i,C.cat)),pb:txt(cv(i,C.pb)),pm:txt(cv(i,C.pm)),sp:txt(cv(i,C.sp)),pj:projName(cv(i,C.pj)),grp:'',src})});
+  }
+  for(const b of SRC.income){
+    const [cc,its]=await Promise.all([
+      SB.from('board_columns').select('*').eq('board_id',b.id).eq('scope','item').order('position'),
+      fetchAllPaged(()=>SB.from('items').select('*').eq('board_id',b.id).eq('archived',false).order('position'))]);
+    const c=cc.data||[];
+    const C={total:findCol(c,/total/i,'number'),rq:findCol(c,/req/i),du:findCol(c,/due/i),
+      st:findCol(c,/status/i,'status'),ds:findCol(c,/descri/i),kw:findCol(c,/^kw$/i),
+      pj:findCol(c,/project|projeto/i)};
+    const dates=c.filter(x=>x.type==='date');
+    if(!C.rq)C.rq=dates[0];if(!C.du)C.du=dates[1]||dates[0];
+    its.filter(i=>!i.parent_id&&!(i.col_values&&i.col_values._pending)).forEach(i=>{
+      income.push({n:i.name,v:+cv(i,C.total)||0,rq:txt(cv(i,C.rq))||null,du:txt(cv(i,C.du))||null,
+        st:txt(cv(i,C.st)),ds:txt(cv(i,C.ds)),kw:+cv(i,C.kw)||null,pj:projName(cv(i,C.pj)),grp:''})});
+  }
+  DATA={purchase,income};normalize();
+
+  /* layout lives in this dashboard board's settings — same for everyone */
+  const {data:bd}=await SB.from('boards').select('settings,name').eq('id',CONN).single();
+  const st=(bd&&bd.settings&&bd.settings.dash)||null;
+  if(st&&st.blocks){
+    const known=new Set(DEFAULT_LAYOUT.map(b=>b.id));
+    ST.blocks=st.blocks.filter(b=>known.has(b.id));
+    DEFAULT_LAYOUT.forEach(d=>{if(!ST.blocks.some(b=>b.id===d.id))ST.blocks.push(JSON.parse(JSON.stringify(d)))});
+    if(st.basis)ST.basis=st.basis;
+  }
+  if(bd&&bd.name)document.title='Lunes · '+bd.name;
+  ST.year=ALL_YEARS.includes(new Date().getFullYear())?new Date().getFullYear():(ALL_YEARS[ALL_YEARS.length-1]||new Date().getFullYear());
+}
+let SAVET=null;
+function saveDB(){if(!CONN)return;clearTimeout(SAVET);SAVET=setTimeout(async()=>{
+  try{const {data:bd}=await SB.from('boards').select('settings').eq('id',CONN).single();
+    const s=Object.assign({},(bd&&bd.settings)||{},{dash:{blocks:ST.blocks,basis:ST.basis}});
+    await SB.from('boards').update({settings:s}).eq('id',CONN)}catch(e){console.warn('save',e)}},500)}
+
+/* ===================== boot ===================== */
+function boot(){if(CONN){const pb=$('protoBadge');if(pb)pb.remove()}renderYears();renderMonths();renderTop();renderGrid()}
+function fail(msg){document.body.innerHTML='<div style="display:flex;height:100vh;align-items:center;justify-content:center;color:#7d8296;font:14px system-ui;text-align:center;padding:30px">'+msg+'</div>'}
+if(CONN){
+  $('canvas').innerHTML='<div style="padding:60px;text-align:center;color:var(--muted)">Loading finance data…</div>';
+  loadFromDB().then(()=>{
+    $('canvas').innerHTML='<div id="grid"></div>';
+    if(!P.length&&!I.length)return fail('No Purchase or Income board found.<br>The dashboard looks for boards named <b>FIN | Purchase</b> and <b>FIN | Income</b>.');
+    boot()}).catch(e=>{console.error(e);fail('Could not load the finance data.<br><small>'+esc(e.message||e)+'</small>')});
+}else if(P.length||I.length)boot();else initLoader();
+</script>
+</body></html>
