@@ -398,6 +398,11 @@ async function selectBoard(id){
   curBoard=boards.find(b=>b.id===id);
   renderBoardNav();
   setBoardTitle(curBoard.name);
+  if(curBoard.template==='dashboard'){    // FinDash: no groups/columns/items of its own
+    groups=[];cols=[];items=[];automations=[];links=[];
+    filters={search:'',cols:{}};fBadge();
+    return renderView();
+  }
   const [g,c,a]=await Promise.all([
     sb.from('groups').select('*').eq('board_id',id).order('position'),
     sb.from('board_columns').select('*').eq('board_id',id).order('position'),
@@ -417,6 +422,7 @@ const subCols=()=>cols.filter(c=>c.scope==='subitem');
 const subsOf=id=>items.filter(x=>x.parent_id===id);
 const topItems=()=>items.filter(x=>!x.parent_id);
 const isProjectBoard=()=>!!(curBoard&&curBoard.template==='project'); // B0 gate
+const isDashBoard=()=>!!(curBoard&&curBoard.template==='dashboard');   // FinDash gate
 function descendantIds(id){const out=[];for(const c of items.filter(x=>x.parent_id===id)){out.push(c.id,...descendantIds(c.id))}return out}
 /* ===== B2 — Gantt persistence helpers (dependencies, codes, board settings) ===== */
 const DEP_TYPES=['FS','SS','FF','SF']; // FS=TI, SS=II, FF=TT, SF=IT
@@ -452,8 +458,15 @@ async function saveProjSettings(patch){curBoard.settings=Object.assign({},curBoa
 async function addBoard(){
   const name=prompt('Board name:');if(!name)return;
   // B0 — choose the page template at creation. It CANNOT be changed later.
-  const project=confirm('Create as a PROJECT board?\n\nOK  = Project  (Gantt · Workload · unlimited sub-elements)\nCancel = Default  (Table · Kanban · Calendar)\n\nThe board type cannot be changed after creation.');
-  const template=project?'project':'default';
+  const pick=(prompt('Page template for "'+name+'" (cannot be changed later):\n\n1 = Default    (Table · Kanban · Calendar)\n2 = Project    (Gantt · Workload · unlimited sub-elements)\n3 = Dashboard  (Finance dashboard reading Purchase + Income)\n\nType 1, 2 or 3:','1')||'').trim();
+  if(!['1','2','3'].includes(pick))return;
+  const template=pick==='2'?'project':pick==='3'?'dashboard':'default';
+  const project=template==='project';
+  if(template==='dashboard'){
+    const {data:d0,error:e0}=await sb.from('boards').insert({name,position:boards.length,template}).select().single();
+    if(e0)return toast(e0.message);
+    boards.push(d0);renderBoardNav();selectBoard(d0.id);return;   // dashboard boards hold no groups/columns/items
+  }
   const {data,error}=await sb.from('boards').insert({name,position:boards.length,template}).select().single();
   if(error)return toast(error.message);
   const gs=[{board_id:data.id,name:'To Do',color:'#579bfc',position:0},{board_id:data.id,name:'Doing',color:'#fdab3d',position:1},{board_id:data.id,name:'Done',color:'#00c875',position:2}];
@@ -810,9 +823,11 @@ function toolsMenu(e){
 function renderView(){
   if(!curBoard)return;
   updateAiCount();
-  const proj=isProjectBoard();
-  const tabsEl=document.querySelector('#topbar .tabs'); if(tabsEl)tabsEl.style.display=proj?'none':'';
-  const tr=$('topRight'); if(tr)tr.style.display=proj?'none':'';
+  const proj=isProjectBoard(), dash=isDashBoard();
+  const tabsEl=document.querySelector('#topbar .tabs'); if(tabsEl)tabsEl.style.display=(proj||dash)?'none':'';
+  const tr=$('topRight'); if(tr)tr.style.display=(proj||dash)?'none':'';
+  const vm=$('viewMenuBtn'); if(vm)vm.style.display=dash?'none':'';
+  if(dash)return renderDashApp();              // FinDash: dashboard board = LunesFinDash prototype (iframe)
   if(proj)return renderProjectApp();           // Rework: project board = LunesGantt prototype (iframe)
   $('content').dataset.pg='';
   const g=$('tab-gantt'),w=$('tab-workload'); if(g)g.style.display='none'; if(w)w.style.display='none';
@@ -823,6 +838,12 @@ function renderView(){
   else if(view==='aiinput')renderAIInput();
   else renderCalendar();
   renderBatchBar();
+}
+function renderDashApp(){
+  const c=$('content');
+  if(c.dataset.pg==='dash:'+curBoard.id)return;
+  c.dataset.pg='dash:'+curBoard.id;
+  c.innerHTML='<iframe id="dashframe" src="LunesFinDash_prototype.html?board='+curBoard.id+'&t='+Date.now()+'" style="width:100%;height:calc(100vh - 54px);border:0;display:block;background:#fff"></iframe>';
 }
 function renderProjectApp(){
   const c=$('content');
