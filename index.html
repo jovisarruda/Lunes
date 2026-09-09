@@ -1658,12 +1658,10 @@ function bmTab(t){
       <button class="btn" style="align-self:flex-start" onclick="batchMove()" ${n?'':'disabled'}>Move</button>`;
   }else if(t==='movesub'){
     const subsSel=sel.filter(x=>x.parent_id);
-    const excl=new Set();subsSel.forEach(s=>{excl.add(s.id);descendantIds(s.id).forEach(d=>excl.add(d))});
-    const cands=items.filter(x=>!excl.has(x.id)).slice().sort((a,b)=>{const ga=groupName(a.group_id)||'',gb=groupName(b.group_id)||'';return ga===gb?(a.parent_id?1:0)-(b.parent_id?1:0)||String(a.name).localeCompare(String(b.name)):ga.localeCompare(gb)});
-    b.innerHTML=`<div class="row"><span class="small" style="width:80px">New parent</span>
-      <select id="bmParent" style="max-width:360px">${cands.map(c=>{const g=groupName(c.group_id);return `<option value="${c.id}">${esc((g?g+' / ':'')+(c.parent_id?'↳ ':'')+c.name)}</option>`}).join('')}</select></div>
-      <p class="small">Moves the ${subsSel.length} selected sub-item(s) (with their sub-tree) under the chosen item. Selected top-level items are ignored.</p>
-      <button class="btn" style="align-self:flex-start" onclick="batchMoveSub()" ${subsSel.length&&cands.length?'':'disabled'}>Move</button>`;
+    if(!subsSel.length){b.innerHTML='<p class="small">Selecione ao menos um subitem para mover.</p>';return}
+    bmChain=[];
+    b.innerHTML=`<div id="bmMoveWrap"></div>`;
+    bmMoveRender();
   }else{
     const nItem=sel.filter(x=>!x.parent_id).length,nSub=sel.filter(x=>x.parent_id).length;
     b.innerHTML=`<p class="small">Duplicates each selected row with its whole sub-tree. Top-level items are copied in place; sub-items are copied as siblings.</p>
@@ -1681,16 +1679,48 @@ async function batchMove(){
   document.querySelector('.overlay')?.remove();
   selected.clear();renderView();toast('Moved '+tops.length+' item(s)');
 }
+// ----- "Move to item" cascading picker: one dropdown per hierarchy level -----
+let bmChain=[];   // path of chosen item ids; destination = deepest chosen
+function bmChainSet(lvl,val){bmChain=bmChain.slice(0,lvl);if(val)bmChain[lvl]=val;bmMoveRender()}
+function bmMoveRender(){
+  const wrap=$('bmMoveWrap');if(!wrap)return;
+  const subsSel=items.filter(x=>selected.has(x.id)&&x.parent_id);
+  const excl=new Set();subsSel.forEach(s=>{excl.add(s.id);descendantIds(s.id).forEach(d=>excl.add(d))});
+  let html='',parentId=null;
+  for(let lvl=0;lvl<=bmChain.length;lvl++){
+    const opts=(parentId===null?topItems():subsOf(parentId)).filter(x=>!excl.has(x.id)&&!isPending(x)).slice().sort((a,b)=>(a.position||0)-(b.position||0));
+    if(!opts.length)break;
+    const chosen=bmChain[lvl]||'';
+    const pName=parentId===null?'':(items.find(x=>x.id===parentId)?.name||'');
+    const stopLabel=lvl===0?'— escolha um item —':('↳ deixar aqui dentro de "'+pName+'"');
+    const optOne=o=>`<option value="${o.id}" ${chosen===o.id?'selected':''}>${esc(o.name)}${subsOf(o.id).length?'  ▸':''}</option>`;
+    const optHtml=lvl===0
+      ? groups.map(g=>{const gi=opts.filter(o=>o.group_id===g.id);return gi.length?`<optgroup label="${esc(g.name)}">${gi.map(optOne).join('')}</optgroup>`:''}).join('')
+      : opts.map(optOne).join('');
+    html+=`<div class="row"><span class="small" style="width:64px">Nível ${lvl+1}</span>
+      <select onchange="bmChainSet(${lvl},this.value)" style="max-width:340px">
+        <option value="">${esc(stopLabel)}</option>
+        ${optHtml}
+      </select></div>`;
+    if(!chosen)break;
+    parentId=chosen;
+  }
+  const pid=bmChain.length?bmChain[bmChain.length-1]:null;
+  const np=pid?items.find(x=>x.id===pid):null;
+  html+=`<p class="small">${np?('Destino: <b>'+esc(np.name)+'</b> — move '+subsSel.length+' subitem(ns) pra dentro dele. (▸ = tem subitens, dá pra descer mais)'):'Escolha o item de destino; selecione um item com ▸ para descer um nível.'}</p>
+    <button class="btn" style="align-self:flex-start" onclick="batchMoveSub()" ${np&&subsSel.length?'':'disabled'}>Move</button>`;
+  wrap.innerHTML=html;
+}
 async function batchMoveSub(){
-  const pid=$('bmParent')?.value;const np=items.find(x=>x.id===pid);
-  if(!np)return toast('Pick a parent item');
+  const pid=bmChain.length?bmChain[bmChain.length-1]:null;const np=items.find(x=>x.id===pid);
+  if(!np)return toast('Escolha o item de destino');
   const subs=items.filter(x=>selected.has(x.id)&&x.parent_id&&x.id!==pid&&!descendantIds(x.id).includes(pid));
-  if(!subs.length)return toast('No sub-item(s) can move under that item');
-  if(!confirm('Move '+subs.length+' sub-item(s) under "'+np.name+'"?'))return;
+  if(!subs.length)return toast('Nenhum subitem pode ir pra esse destino');
+  if(!confirm('Mover '+subs.length+' subitem(ns) pra dentro de "'+np.name+'"?'))return;
   let pos=subsOf(pid).length;
   for(const s of subs){await reparentSub(s,pid);s.position=pos++;await sb.from('items').update({position:s.position}).eq('id',s.id)}
   document.querySelector('.overlay')?.remove();
-  selected.clear();renderView();toast('Moved '+subs.length+' sub-item(s)');
+  selected.clear();renderView();toast('Movido '+subs.length+' subitem(ns)');
 }
 async function batchDuplicate(){
   const sel=items.filter(x=>selected.has(x.id));
