@@ -1125,22 +1125,49 @@ async function rowDrop(e,targetId,scope){
   e.preventDefault();e.stopPropagation();
   e.currentTarget.classList.remove('dragrow');
   const ctx=dragCtx;dragCtx=null;
-  if(!ctx||ctx.scope!==scope||ctx.id===targetId)return;
+  if(!ctx||ctx.id===targetId)return;
   const dragged=items.find(x=>x.id===ctx.id),target=items.find(x=>x.id===targetId);
   if(!dragged||!target)return;
-  if(scope==='sub'&&dragged.parent_id!==target.parent_id)return;  // subitems: reorder within same parent only
+  // ---- dragging a SUB-item: reorder within a parent OR re-parent onto another sub/item ----
+  if(ctx.scope==='sub'){
+    let newParentId,beforeId=null;
+    if(scope==='sub'){newParentId=target.parent_id;beforeId=target.id}     // dropped on a sub-row → same parent as that sub, before it
+    else{newParentId=target.id}                                            // dropped on an item row → becomes that item's sub-item (at end)
+    if(!newParentId||newParentId===dragged.id)return;
+    if(descendantIds(dragged.id).includes(newParentId))return;             // can't move a sub under its own descendant
+    if(dragged.parent_id!==newParentId)await reparentSub(dragged,newParentId);
+    const list=subsOf(newParentId).slice().sort((a,b)=>(a.position||0)-(b.position||0)).filter(x=>x.id!==dragged.id);
+    const ti=beforeId?list.findIndex(x=>x.id===beforeId):list.length;
+    list.splice(ti<0?list.length:ti,0,dragged);
+    list.forEach((it,i)=>it.position=i);
+    renderView();
+    await Promise.all(list.map(it=>sb.from('items').update({position:it.position}).eq('id',it.id)));
+    return;
+  }
+  // ---- dragging a top-level ITEM ----
+  if(ctx.scope!==scope)return;                                             // item dropped onto a sub-row → ignore
   let movedGroup=false;
-  if(scope==='item'&&dragged.group_id!==target.group_id){         // drag an item into another group
+  if(dragged.group_id!==target.group_id){                                  // drag an item into another group
     await moveItemToGroup(dragged,target.group_id,false);
     movedGroup=true;
   }
   const gid=movedGroup?target.group_id:dragged.group_id;
-  const list=(scope==='item'?topItems().filter(x=>x.group_id===gid):subsOf(dragged.parent_id)).slice().sort((a,b)=>(a.position||0)-(b.position||0)).filter(x=>x.id!==dragged.id);
+  const list=topItems().filter(x=>x.group_id===gid).slice().sort((a,b)=>(a.position||0)-(b.position||0)).filter(x=>x.id!==dragged.id);
   const ti=list.findIndex(x=>x.id===target.id);
   list.splice(ti<0?list.length:ti,0,dragged);   // drop before the target row
   list.forEach((it,i)=>it.position=i);
   renderView();
   await Promise.all(list.map(it=>sb.from('items').update({position:it.position}).eq('id',it.id)));
+}
+// move a sub-item (with its whole sub-tree) under a different parent item/sub-item
+async function reparentSub(sub,newParentId){
+  const np=items.find(x=>x.id===newParentId);if(!np)return;
+  const gid=np.group_id;const kids=descendantIds(sub.id);const op=items.find(x=>x.id===sub.parent_id);
+  sub.parent_id=newParentId;sub.group_id=gid;
+  for(const d of kids){const c=items.find(x=>x.id===d);if(c)c.group_id=gid}
+  await sb.from('items').update({parent_id:newParentId,group_id:gid}).eq('id',sub.id);
+  if(kids.length)await sb.from('items').update({group_id:gid}).in('id',kids);
+  try{logActivity(sub.id,'parent',op?op.name:'',np.name)}catch(_){}
 }
 async function groupDrop(e,gid){   // drop an item onto a group's "+ Add item" zone → move to end of that group
   e.preventDefault();e.stopPropagation();
@@ -1604,13 +1631,14 @@ function batchModify(){
     <div class="row" style="gap:6px;margin-bottom:6px">
       <button class="btn sm" id="bmt-val" onclick="bmTab('val')">Change value</button>
       <button class="btn sm ghost" id="bmt-move" onclick="bmTab('move')">Move to group</button>
+      <button class="btn sm ghost" id="bmt-movesub" onclick="bmTab('movesub')">Move to item</button>
       <button class="btn sm ghost" id="bmt-dup" onclick="bmTab('dup')">Duplicate</button>
     </div>
     <div id="bmBody"></div>`);
   bmTab('val');
 }
 function bmTab(t){
-  ['val','move','dup'].forEach(x=>{const b=$('bmt-'+x);if(b)b.className='btn sm'+(x===t?'':' ghost')});
+  ['val','move','movesub','dup'].forEach(x=>{const b=$('bmt-'+x);if(b)b.className='btn sm'+(x===t?'':' ghost')});
   const b=$('bmBody');const sel=items.filter(x=>selected.has(x.id));
   if(t==='val'){
     const hasItem=sel.some(x=>!x.parent_id),hasSub=sel.some(x=>x.parent_id);
@@ -1628,6 +1656,14 @@ function bmTab(t){
       <select id="bmGroup">${groups.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select></div>
       <p class="small">Moves the ${n} selected top-level item(s) with their sub-elements. Selected sub-items are ignored.</p>
       <button class="btn" style="align-self:flex-start" onclick="batchMove()" ${n?'':'disabled'}>Move</button>`;
+  }else if(t==='movesub'){
+    const subsSel=sel.filter(x=>x.parent_id);
+    const excl=new Set();subsSel.forEach(s=>{excl.add(s.id);descendantIds(s.id).forEach(d=>excl.add(d))});
+    const cands=items.filter(x=>!excl.has(x.id)).slice().sort((a,b)=>{const ga=groupName(a.group_id)||'',gb=groupName(b.group_id)||'';return ga===gb?(a.parent_id?1:0)-(b.parent_id?1:0)||String(a.name).localeCompare(String(b.name)):ga.localeCompare(gb)});
+    b.innerHTML=`<div class="row"><span class="small" style="width:80px">New parent</span>
+      <select id="bmParent" style="max-width:360px">${cands.map(c=>{const g=groupName(c.group_id);return `<option value="${c.id}">${esc((g?g+' / ':'')+(c.parent_id?'↳ ':'')+c.name)}</option>`}).join('')}</select></div>
+      <p class="small">Moves the ${subsSel.length} selected sub-item(s) (with their sub-tree) under the chosen item. Selected top-level items are ignored.</p>
+      <button class="btn" style="align-self:flex-start" onclick="batchMoveSub()" ${subsSel.length&&cands.length?'':'disabled'}>Move</button>`;
   }else{
     const nItem=sel.filter(x=>!x.parent_id).length,nSub=sel.filter(x=>x.parent_id).length;
     b.innerHTML=`<p class="small">Duplicates each selected row with its whole sub-tree. Top-level items are copied in place; sub-items are copied as siblings.</p>
@@ -1644,6 +1680,17 @@ async function batchMove(){
   for(const it of tops){await moveItemToGroup(it,gid,false);it.position=pos++;await sb.from('items').update({position:it.position}).eq('id',it.id)}
   document.querySelector('.overlay')?.remove();
   selected.clear();renderView();toast('Moved '+tops.length+' item(s)');
+}
+async function batchMoveSub(){
+  const pid=$('bmParent')?.value;const np=items.find(x=>x.id===pid);
+  if(!np)return toast('Pick a parent item');
+  const subs=items.filter(x=>selected.has(x.id)&&x.parent_id&&x.id!==pid&&!descendantIds(x.id).includes(pid));
+  if(!subs.length)return toast('No sub-item(s) can move under that item');
+  if(!confirm('Move '+subs.length+' sub-item(s) under "'+np.name+'"?'))return;
+  let pos=subsOf(pid).length;
+  for(const s of subs){await reparentSub(s,pid);s.position=pos++;await sb.from('items').update({position:s.position}).eq('id',s.id)}
+  document.querySelector('.overlay')?.remove();
+  selected.clear();renderView();toast('Moved '+subs.length+' sub-item(s)');
 }
 async function batchDuplicate(){
   const sel=items.filter(x=>selected.has(x.id));
