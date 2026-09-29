@@ -340,6 +340,8 @@ function fmtDateBR(ds){const m=/^(\d{4})-(\d{2})-(\d{2})/.exec(String(ds==null?'
 function addMonth(ds){const p=ds.split('-').map(Number);let ny=p[0],nm=p[1]+1;if(nm>12){nm=1;ny++}const last=new Date(ny,nm,0).getDate();return ny+'-'+String(nm).padStart(2,'0')+'-'+String(Math.min(p[2],last)).padStart(2,'0')}
 // stamp a "<prefix> MM/YYYY" name: replace an existing MM/YYYY pattern, else append
 function stampMonthName(name,stamp){const re=/\b\d{1,2}\/\d{4}\b/;return re.test(name)?name.replace(re,stamp):(name+' '+stamp)}
+// "<name> - REF MM/YYYY" using the month of a 'YYYY-MM-DD' date; replaces an existing REF MM/YYYY
+function refName(name,ds){const st=ds.slice(5,7)+'/'+ds.slice(0,4),re=/\bREF \d{1,2}\/\d{4}\b/;return re.test(name)?name.replace(re,'REF '+st):name+' - REF '+st}
 const monthStamp=()=>{const n=new Date();return String(n.getMonth()+1).padStart(2,'0')+'/'+n.getFullYear()};
 const isPending=it=>!!(it&&it.col_values&&it.col_values._pending);
 const hasProposed=it=>!!(it&&it.col_values&&it.col_values._proposed&&Object.keys(it.col_values._proposed).length);
@@ -675,16 +677,41 @@ async function duplicateItem(it,targetGroup,suffix){
   const root=await cloneNode(it,targetGroup,it.parent_id,suffix||' (copy)');
   renderView();return root;
 }
-// recursively clone an item and its whole sub-tree (new uids/ids assigned by the DB default)
+// recursively clone an item and its whole sub-tree (new uids/ids assigned by the DB default),
+// including comments, files and activity log of every node (2026-09-29)
 async function cloneNode(src,targetGroup,newParent,suffix){
-  const copy={board_id:src.board_id,group_id:targetGroup,parent_id:newParent,name:src.name+(suffix||''),col_values:src.col_values,position:src.position,created_by:myName};
-  const {data,error}=await sb.from('items').insert(copy).select().single();
-  if(error){toast(error.message);return null}
-  items.push(data);
-  for(const ch of subsOf(src.id).slice().sort((a,b)=>(a.position||0)-(b.position||0))){
-    await cloneNode(ch,targetGroup,data.id,'');
-  }
+  const pairs=[];
+  const root=await cloneTree(src,{group:targetGroup,parent:newParent,name:src.name+(suffix||''),pool:items,local:true,position:true,by:myName,pairs});
+  if(root)await copyItemExtras(pairs,myName);
+  return root;
+}
+// core clone used by EVERY duplication path (manual, batch, automations).
+// o={group,parent,name,cv (root col_values override),pool (where to find children),local (push into items[]),position (keep src position),by,pairs (collects [srcId,newId,srcName])}
+async function cloneTree(src,o){
+  const row={board_id:src.board_id,group_id:o.group,parent_id:o.parent||null,name:o.name??src.name,col_values:o.cv||src.col_values,created_by:o.by||myName};
+  if(o.position)row.position=src.position;
+  const {data,error}=await sb.from('items').insert(row).select().single();
+  if(error||!data){console.error('cloneTree',error);if(o.local)toast(error?error.message:'Duplicate failed');return null}
+  if(o.local)items.push(data);
+  o.pairs.push([src.id,data.id,src.name]);
+  const kids=o.pool.filter(x=>x.parent_id===src.id).sort((a,b)=>(a.position||0)-(b.position||0));
+  for(const ch of kids)await cloneTree(ch,{...o,parent:data.id,name:ch.name,cv:null});
   return data;
+}
+// copy comments, file links (same Drive file, new link row) and activity log from each source node to its copy,
+// keeping original author/date, then stamp a 'duplicated' entry on the copy
+async function copyItemExtras(pairs,by){
+  if(!pairs.length)return;
+  const map={};pairs.forEach(p=>map[p[0]]=p[1]);
+  const src=Object.keys(map);
+  for(const t of ['comments','attachments','activity_logs']){
+    let rows=[];
+    for(let i=0;i<src.length;i+=100){const ids=src.slice(i,i+100);rows=rows.concat(await fetchAllPaged(()=>sb.from(t).select('*').in('item_id',ids).order('created_at')))}
+    const ins=rows.map(r=>{const n={...r,item_id:map[r.item_id]};delete n.id;return n});
+    for(let i=0;i<ins.length;i+=500){const {error}=await sb.from(t).insert(ins.slice(i,i+500));if(error)console.error('copyItemExtras',t,error)}
+  }
+  const mark=pairs.map(p=>({item_id:p[1],author:by||myName,field:'duplicated',old_value:p[2]||'',new_value:''}));
+  for(let i=0;i<mark.length;i+=500)await sb.from('activity_logs').insert(mark.slice(i,i+500));
 }
 
 /* ================= FILTERS ================= */
@@ -1949,7 +1976,7 @@ async function renderPanel(){
   }else if(panelTab==='log'){
     const {data}=await sb.from('activity_logs').select('*').eq('item_id',it.id).order('created_at',{ascending:false}).limit(200);
     body.innerHTML=(data||[]).map(l=>{
-      const what=l.field==='created'?'created this item':`changed <b>${esc(l.field)}</b>${l.old_value?` from "${esc(l.old_value)}"`:''} to "${esc(l.new_value)}"`;
+      const what=l.field==='created'?'created this item':l.field==='duplicated'?`duplicated this item from "${esc(l.old_value)}"`:`changed <b>${esc(l.field)}</b>${l.old_value?` from "${esc(l.old_value)}"`:''} to "${esc(l.new_value)}"`;
       return `<div class="logline"><b>${esc(l.author||'?')}</b> ${what}<br><span style="font-size:11px">${new Date(l.created_at).toLocaleString()}</span></div>`;
     }).join('')||'<p class="small">No activity.</p>';
   }else{
@@ -1981,7 +2008,9 @@ async function uploadAtt(){
 }
 async function delAtt(id,path){
   if(!confirm('Delete this file?'))return;
-  try{await sb.functions.invoke('drive-upload',{body:{action:'delete',fileId:path}})}catch(e){}
+  // duplicates share the same Drive file: only send it to the trash when no other item still links to it
+  const others=await sb.from('attachments').select('*',{count:'exact',head:true}).eq('path',path).neq('id',id);
+  if(path&&!others.error&&others.count===0){try{await sb.functions.invoke('drive-upload',{body:{action:'delete',fileId:path}})}catch(e){}}
   await sb.from('attachments').delete().eq('id',id);
   renderPanel();
 }
@@ -2299,6 +2328,7 @@ function openAutomations(){
         <option value="monthly">every month (day N)</option>
         <option value="item_created">item is created</option>
         <option value="auto_date_duplication">⭐ monthly duplication → next month (special)</option>
+        <option value="date_recurrence">⭐ recurring item: copy when its date arrives (special)</option>
       </select><span id="aTrigX"></span></div>
     <div class="row" id="aActRow"><span class="small">Then</span>
       <select id="aAct" onchange="autoActUI()">
@@ -2325,8 +2355,17 @@ function autoTrigUI(){
       ? `<select id="aDd">${itemDate.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select> arrives, duplicate all items of ${gsel('aDsrc')} → stamp name with current MM/YYYY, move copies to ${gsel('aDdst')}, then push originals' dates +1 month`
       : `<span class="small" style="color:var(--danger)">Add an item date column first (e.g. "Ref").</span>`;
   }
+  else if(t==='date_recurrence'){
+    const itemDate=cols.filter(c=>c.type==='date'&&c.scope==='item'),iStat=cols.filter(c=>c.type==='status'&&c.scope==='item');
+    const gsel=id=>`<select id="${id}">${groups.map(g=>`<option value="${g.id}">${esc(g.name)}</option>`).join('')}</select>`;
+    x.innerHTML=itemDate.length
+      ? `<select id="aRd">${itemDate.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select> arrives (per item), copy each item of ${gsel('aRsrc')} to ${gsel('aRdst')} as "name - REF MM/YYYY", set <select id="aRsc"><option value="">(no status change)</option>${iStat.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select> = <select id="aRsv"></select>, then push originals +1 month (same day): ${itemDate.map(c=>`<label class="small"><input type="checkbox" class="aRsh" value="${c.id}"> ${esc(c.name)}</label>`).join(' ')}`
+      : `<span class="small" style="color:var(--danger)">Add an item date column first.</span>`;
+    const sc=$('aRsc');if(sc){sc.onchange=()=>{const c=cols.find(z=>z.id===sc.value);$('aRsv').innerHTML=((c?.options?.labels)||[]).map(l=>`<option>${esc(l.name)}</option>`).join('')};sc.onchange()}
+    const dd=$('aRd');if(dd){const tick=()=>document.querySelectorAll('.aRsh').forEach(b=>{if(b.value===dd.value)b.checked=true});dd.onchange=tick;tick()}
+  }
   else x.innerHTML='';
-  const actRow=$('aActRow');if(actRow)actRow.style.display=(t==='auto_date_duplication')?'none':'';
+  const actRow=$('aActRow');if(actRow)actRow.style.display=(t==='auto_date_duplication'||t==='date_recurrence')?'none':'';
   const tc=$('aTc');if(tc&&t==='status_changes')tc.onchange=fillTv;
 }
 function fillTv(){
@@ -2353,6 +2392,17 @@ async function saveAutomation(){
     if(error)return toast(error.message);
     automations.push(data);renderAutoList();toast('Special rule added');return;
   }
+  if(t==='date_recurrence'){
+    const dd=$('aRd');if(!dd)return toast('Add an item date column first');
+    trigger.dateCol=dd.value;trigger.srcGroup=$('aRsrc').value;trigger.dstGroup=$('aRdst').value;
+    if(trigger.srcGroup===trigger.dstGroup)return toast('Source and destination groups must differ');
+    trigger.statusCol=$('aRsc').value||null;trigger.statusValue=trigger.statusCol?$('aRsv').value:null;
+    trigger.shiftCols=[...document.querySelectorAll('.aRsh')].filter(b=>b.checked).map(b=>b.value);
+    if(!trigger.shiftCols.includes(trigger.dateCol))trigger.shiftCols.unshift(trigger.dateCol); // the trigger date must move, or it would fire again
+    const {data,error}=await sb.from('automations').insert({board_id:curBoard.id,trigger,action:{type:'date_recurrence'},enabled:true}).select().single();
+    if(error)return toast(error.message);
+    automations.push(data);renderAutoList();toast('Special rule added');return;
+  }
   const action={type:a};
   if(a==='move_group'||a==='duplicate')action.groupId=$('aAg').value;
   if(a==='set_column'){action.colId=$('aAc').value;action.value=$('aAv').value}
@@ -2366,6 +2416,7 @@ function describeAuto(a){
   const cn=id=>cols.find(c=>c.id===id)?.name||'?';
   const gn=id=>groups.find(g=>g.id===id)?.name||'?';
   if(t.type==='auto_date_duplication')return `⭐ Monthly: when <b>${esc(cn(t.dateCol))}</b> arrives → duplicate all items of <b>${esc(gn(t.srcGroup))}</b>, stamp name with current MM/YYYY, move copies to <b>${esc(gn(t.dstGroup))}</b>, then push originals' item+subitem dates +1 month`;
+  if(t.type==='date_recurrence')return `⭐ Recurring: when <b>${esc(cn(t.dateCol))}</b> arrives (per item) → copy each item of <b>${esc(gn(t.srcGroup))}</b> to <b>${esc(gn(t.dstGroup))}</b> as "name - REF MM/YYYY"${t.statusCol?`, set <b>${esc(cn(t.statusCol))}</b> = "${esc(t.statusValue)}"`:''}, then push originals' <b>${esc((t.shiftCols||[t.dateCol]).map(cn).join(', '))}</b> +1 month (same day)`;
   let s='When ';
   if(t.type==='status_changes')s+=`<b>${esc(cn(t.colId))}</b> → "${esc(t.value)}"`;
   else if(t.type==='date_arrives')s+=`<b>${esc(cn(t.colId))}</b> arrives`;
@@ -2407,6 +2458,7 @@ function trigText(a,colsArr){
   if(t.type==='date_arrives')return 'a data "'+cn(t.colId)+'" chegou'+cond;
   if(t.type==='monthly')return 'gatilho mensal (dia '+t.day+')';
   if(t.type==='auto_date_duplication')return 'duplicação mensal executada';
+  if(t.type==='date_recurrence')return 'recorrência mensal executada';
   return 'item foi criado';
 }
 function notifMsg(a,it,bName,colsArr,parentName){
@@ -2442,7 +2494,7 @@ function autoCondOk(t,it){
 async function runTimeAutomations(){
   // runs across ALL boards on app load
   const {data:autos}=await sb.from('automations').select('*').eq('enabled',true);
-  const timeAutos=(autos||[]).filter(a=>['date_arrives','monthly','auto_date_duplication'].includes(a.trigger.type));
+  const timeAutos=(autos||[]).filter(a=>['date_arrives','monthly','auto_date_duplication','date_recurrence'].includes(a.trigger.type));
   if(!timeAutos.length)return;
   const allItems=await fetchAllPaged(()=>sb.from('items').select('*').eq('archived',false)); // paginado (evita teto de 1000)
   const {data:allBoards}=await sb.from('boards').select('*');
@@ -2479,13 +2531,11 @@ async function runTimeAutomations(){
       if(!arrived)continue;
       const stamp=monthStamp();
       const bCols=(allCols||[]).filter(c=>c.board_id===a.board_id);
-      // 1) duplicate every source item (+its subitems) into the destination group, stamping the copy's name
+      // 1) duplicate every source item (+its whole sub-tree, comments, files, log) into the destination group, stamping the copy's name
       for(const it of srcTop){
-        const nm=stampMonthName(it.name,stamp);
-        const {data:ni}=await sb.from('items').insert({board_id:it.board_id,group_id:t.dstGroup,name:nm,col_values:it.col_values,created_by:'automation'}).select().single();
-        if(!ni)continue;
-        const subs=(allItems||[]).filter(sx=>sx.parent_id===it.id).map(sx=>({board_id:sx.board_id,group_id:t.dstGroup,parent_id:ni.id,name:sx.name,col_values:sx.col_values,created_by:'automation'}));
-        if(subs.length)await sb.from('items').insert(subs);
+        const pairs=[];
+        const ni=await cloneTree(it,{group:t.dstGroup,name:stampMonthName(it.name,stamp),pool:allItems||[],by:'automation',pairs});
+        if(ni)await copyItemExtras(pairs,'automation');
       }
       // 2) push originals' date columns (items + subitems of the source group) forward exactly 1 month
       const srcAll=bItems.filter(x=>x.group_id===t.srcGroup&&!isPending(x));
@@ -2498,6 +2548,31 @@ async function runTimeAutomations(){
       t.last_run=ym;
       await sb.from('automations').update({trigger:t}).eq('id',a.id);
       await autoLog(a.board_id,a.id,null,'Monthly duplication ('+stamp+'): '+srcTop.length+' item(s) copied to destination group; originals pushed +1 month');
+    }else if(t.type==='date_recurrence'){
+      // per item: each source item fires when ITS OWN date arrives; catches up missed months (1 copy per month)
+      const shift=(t.shiftCols&&t.shiftCols.length)?t.shiftCols:[t.dateCol];
+      for(const it of bItems.filter(x=>x.group_id===t.srcGroup&&!x.parent_id&&!isPending(x))){
+        if(!autoCondOk(t,it))continue;
+        for(let guard=0;guard<24;guard++){
+          const dv=it.col_values?.[t.dateCol];
+          if(!dv||dv>today)break;
+          const before=it.col_values,after={...before};
+          for(const cid of shift)if(after[cid])after[cid]=addMonth(after[cid]);
+          // claim first: only advances if the date is still the one we read (another tab/user already did it -> no rows -> stop)
+          const {data:cl}=await sb.from('items').update({col_values:after}).eq('id',it.id).eq('col_values->>'+t.dateCol,dv).select('id');
+          if(!cl||!cl.length)break;
+          it.col_values=after;
+          const cv={...before};if(t.statusCol&&t.statusValue)cv[t.statusCol]=t.statusValue;
+          const pairs=[];
+          const ni=await cloneTree(it,{group:t.dstGroup,name:refName(it.name,dv),cv,pool:allItems||[],by:'automation',pairs});
+          if(!ni){ // undo the claim so the next app load retries
+            await sb.from('items').update({col_values:before}).eq('id',it.id).eq('col_values->>'+t.dateCol,after[t.dateCol]);it.col_values=before;
+            await autoLog(a.board_id,a.id,it.id,'Recurring copy FAILED for "'+it.name+'" ('+fmtDateBR(dv)+') — will retry on next load');break;
+          }
+          await copyItemExtras(pairs,'automation');
+          await autoLog(a.board_id,a.id,ni.id,'Recurring copy: "'+ni.name+'" created in destination group; original pushed +1 month');
+        }
+      }
     }
   }
   if(curBoard)selectBoard(curBoard.id);
@@ -2512,10 +2587,9 @@ async function execTimeAction(a,it,allBoards,allGroups,allCols,allItems){
   else if(ac.type==='archive')await sb.from('items').update({archived:true}).eq('id',it.id);
   else if(ac.type==='notify'){const pn=it.parent_id?(allItems||[]).find(x=>x.id===it.parent_id)?.name:null;const bCols=(allCols||[]).filter(c=>c.board_id===it.board_id);const msg=notifMsg(a,it,bName,bCols,pn);for(const em of splitEmails(ac.email))await sb.from('notifications').insert({user_email:em,message:msg,board_id:it.board_id,item_id:it.id})}
   else if(ac.type==='duplicate'){
-    const suffix=' | '+new Date().toLocaleDateString('en',{month:'short',year:'numeric'});
-    const {data:ni}=await sb.from('items').insert({board_id:it.board_id,group_id:ac.groupId,name:it.name+suffix,col_values:it.col_values,created_by:'automation'}).select().single();
-    const subs=(allItems||[]).filter(s=>s.parent_id===it.id).map(s=>({board_id:s.board_id,group_id:ac.groupId,parent_id:ni.id,name:s.name,col_values:s.col_values,created_by:'automation'}));
-    if(subs.length)await sb.from('items').insert(subs);
+    const suffix=' | '+new Date().toLocaleDateString('en',{month:'short',year:'numeric'}),pairs=[];
+    const ni=await cloneTree(it,{group:ac.groupId,parent:it.parent_id,name:it.name+suffix,pool:allItems||[],by:'automation',pairs});
+    if(ni)await copyItemExtras(pairs,'automation');
   }
   await autoLog(it.board_id,a.id,it.id,'Rule ran on "'+it.name+'" (time-based)');
 }
