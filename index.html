@@ -258,8 +258,12 @@ table.wlt td.over{background:#fdecef;color:#b02a3c;font-weight:600}
     <div class="logo">Lu<span>nes</span></div>
     <input id="lEmail" type="email" placeholder="Email" autocomplete="username">
     <input id="lPass" type="password" placeholder="Password" autocomplete="current-password">
+    <input id="lPass2" type="password" placeholder="Confirm new password" autocomplete="new-password" style="display:none">
     <div id="loginErr"></div>
+    <div id="loginOk" style="color:#177a4d;font-size:12.5px;min-height:0"></div>
     <button class="btn" id="lBtn" onclick="doLogin()">Sign in</button>
+    <a href="#" id="lForgot" onclick="setLoginMode('reset');return false" style="text-align:center;font-size:12.5px;color:var(--muted,#6b7280);text-decoration:none">Forgot password?</a>
+    <a href="#" id="lBack" onclick="setLoginMode('login');return false" style="display:none;text-align:center;font-size:12.5px;color:var(--muted,#6b7280);text-decoration:none">&larr; Back to sign in</a>
   </div>
 </div>
 
@@ -349,6 +353,48 @@ function toast(m){const t=$('toast');t.textContent=m;t.style.display='block';cle
 const fmtMoney=n=>'R$ '+Number(n||0).toLocaleString('pt-BR',{maximumFractionDigits:2});
 
 /* ================= AUTH ================= */
+// Modes: 'login' | 'reset' (ask email, send link) | 'newpass' (arrived via recovery link)
+let loginMode='login';
+// Capture BEFORE supabase-js clears the URL: did the user arrive from a recovery e-mail?
+let recoveryFlow=/type=recovery/.test(location.hash)||/type=recovery/.test(location.search);
+function setLoginMode(m){
+  loginMode=m;
+  $('loginErr').textContent='';$('loginOk').textContent='';
+  const login=m==='login',reset=m==='reset',np=m==='newpass';
+  $('lEmail').style.display=(login||reset)?'':'none';
+  $('lPass').style.display=(login||np)?'':'none';
+  $('lPass2').style.display=np?'':'none';
+  $('lPass').placeholder=np?'New password (min. 6 characters)':'Password';
+  $('lPass').autocomplete=np?'new-password':'current-password';
+  $('lBtn').textContent=login?'Sign in':reset?'Send recovery link':'Save new password';
+  $('lForgot').style.display=login?'':'none';
+  $('lBack').style.display=reset?'':'none';
+  $('lBtn').onclick=login?doLogin:reset?doSendReset:doSetNewPass;
+}
+async function doSendReset(){
+  const email=$('lEmail').value.trim();
+  $('loginErr').textContent='';$('loginOk').textContent='';
+  if(!email){$('loginErr').textContent='Enter your e-mail.';return}
+  $('lBtn').disabled=true;
+  const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname});
+  $('lBtn').disabled=false;
+  if(error){$('loginErr').textContent=error.message;return}
+  $('loginOk').textContent='If this e-mail is registered, a recovery link is on its way. Check your inbox (and spam).';
+}
+async function doSetNewPass(){
+  const p1=$('lPass').value,p2=$('lPass2').value;
+  $('loginErr').textContent='';
+  if(p1.length<6){$('loginErr').textContent='Password must have at least 6 characters.';return}
+  if(p1!==p2){$('loginErr').textContent='Passwords do not match.';return}
+  $('lBtn').disabled=true;
+  const {data,error}=await sb.auth.updateUser({password:p1});
+  $('lBtn').disabled=false;
+  if(error){$('loginErr').textContent=error.message;return}
+  recoveryFlow=false;
+  history.replaceState(null,'',location.pathname);
+  start(data.user);
+  toast('Password updated');
+}
 async function doLogin(){
   $('lBtn').disabled=true;$('loginErr').textContent='';
   const {data,error}=await sb.auth.signInWithPassword({email:$('lEmail').value.trim(),password:$('lPass').value});
@@ -357,8 +403,14 @@ async function doLogin(){
   start(data.user);
 }
 async function logout(){await sb.auth.signOut();location.reload()}
-$('lPass').addEventListener('keydown',e=>{if(e.key==='Enter')doLogin()});
-sb.auth.getSession().then(({data})=>{if(data.session)start(data.session.user)});
+$('lPass').addEventListener('keydown',e=>{if(e.key==='Enter')$('lBtn').click()});
+$('lPass2').addEventListener('keydown',e=>{if(e.key==='Enter')$('lBtn').click()});
+$('lEmail').addEventListener('keydown',e=>{if(e.key==='Enter'&&loginMode==='reset')$('lBtn').click()});
+sb.auth.onAuthStateChange((ev)=>{if(ev==='PASSWORD_RECOVERY'){recoveryFlow=true;$('app').style.display='none';$('login').style.display='';setLoginMode('newpass')}});
+setLoginMode(recoveryFlow?'newpass':'login');
+// expired/invalid recovery link comes back as #error=...&error_description=...
+{const h=new URLSearchParams(location.hash.slice(1));if(h.get('error_description')){$('loginErr').textContent=h.get('error_description').replace(/\+/g,' ')+' — request a new link.';history.replaceState(null,'',location.pathname)}}
+sb.auth.getSession().then(({data})=>{if(data.session&&!recoveryFlow)start(data.session.user)});
 
 async function start(u){
   user=u;myName=u.email.split('@')[0];
